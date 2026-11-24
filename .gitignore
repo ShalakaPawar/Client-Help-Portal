@@ -12,3 +12,7 @@ docker/egress.yaml
 
 # recordings and local data
 data/
+
+# smoke test screenshots
+e2e/output/
+*.tsbuildinfo

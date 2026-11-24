@@ -128,6 +128,11 @@ npm run typecheck && npm run lint
 
 LiveKit and the AI providers are test doubles in tests; the running app never uses fakes.
 
+**Real-media smoke test** (needs `npm run dev` running): `npm run e2e:smoke` (`HEADED=1` to watch). It drives two Chrome
+sessions with a fake mic and fake screen through the real UI, LiveKit and Egress, and checks that the consultant
+receives the screen, video segments are written during the call, one voice file per person is produced, and history
+processing runs. Screenshots go to `e2e/output/`.
+
 ---
 
 ## Troubleshooting

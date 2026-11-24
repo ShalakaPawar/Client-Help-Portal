@@ -8,3 +8,8 @@ ws_url: ws://127.0.0.1:7880
 insecure: true
 redis:
   address: redis:6379
+# Local machines (e.g. Colima with 4 CPUs) must fit 1 composite + 2 voice recorders at once.
+# Egress refuses new recorders when the reserved CPU would exceed what is available.
+cpu_cost:
+  room_composite_cpu_cost: 2.0
+  track_cpu_cost: 0.5

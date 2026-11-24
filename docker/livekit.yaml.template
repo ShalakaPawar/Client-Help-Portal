@@ -6,8 +6,12 @@ rtc:
   tcp_port: 7881
   udp_port: 7882
   use_external_ip: false
-  # Browsers on this machine reach the container through the published 127.0.0.1 ports.
-  node_ip: 127.0.0.1
+  # Offer two addresses for media:
+  #  - 127.0.0.1 (loopback): browsers on this machine reach it through the published ports
+  #  - the container's own IP: the recorder's headless Chrome (Egress) reaches it directly.
+  #    Chrome will not connect from a container address to a loopback one, so a
+  #    127.0.0.1-only setup breaks the composite recording.
+  enable_loopback_candidate: true
 redis:
   address: redis:6379
 keys:

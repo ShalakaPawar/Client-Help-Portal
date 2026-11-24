@@ -26,7 +26,16 @@ The project was built with an AI coding assistant (Claude Code). The approach:
 | A webhook can arrive before the recorder row exists | Reasoning about event order | Start times are also taken from the final `egress_ended` event; a fallback job asks LiveKit if an end event never comes |
 | Two "Start call" clicks at once could create two calls | Test written for the race | Partial unique indexes in Postgres; the test proves only one call is created |
 | Tailwind v4 cannot `@apply` custom classes declared with `@layer components` | Production build (`npm run build`) | Shared classes declared with `@utility` |
+| Composite recording aborted: "Start signal not received" | Real-media smoke test (`npm run e2e:smoke`) + Egress logs | LiveKit advertised only `127.0.0.1`; Egress's headless Chrome won't connect from a container address to loopback. Now LiveKit offers its container IP **and** a loopback candidate (`enable_loopback_candidate`) |
+| Only one of the two voice recorders started | Smoke test + DB rows (second start timed out) | Egress reserves CPU per recorder and Colima has 4 CPUs; lowered `cpu_cost` for local use |
+| Voice files only appear when a recorder finishes | Smoke test checked too early | Check after the call ends (documented) |
+| API watch mode stopped emitting after a production build | `npm run dev` failed: `dist/main` missing | Removed TypeScript `incremental` (Nest `deleteOutDir` + incremental cache skips emit); ignore `*.tsbuildinfo` |
 | ESLint `no-undef` flagged browser globals in TypeScript files | Lint | Disabled for TS (the compiler already checks it), as typescript-eslint recommends |
+
+## Real-media smoke test
+`npm run e2e:smoke` drives two Chrome sessions (fake mic + fake screen) through the real UI, LiveKit and Egress:
+login → instant request → call → consent → screen received by the consultant → composite segments written during the
+call → one voice file per person → end → history processing. It found the two recording bugs above.
 
 ## What was checked by hand
 - Real screen sharing, both microphones, the consent flow, recording files appearing during the call, playback and

@@ -19,10 +19,12 @@
     "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
     "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "test": "npm run build -w packages/shared && npm run test -w apps/api && npm run test -w apps/web",
-    "db:reset": "node scripts/db-reset.mjs"
+    "db:reset": "node scripts/db-reset.mjs",
+    "e2e:smoke": "node e2e/smoke.mjs"
   },
   "devDependencies": {
-    "concurrently": "^9.2.1"
+    "concurrently": "^9.2.1",
+    "playwright-core": "^1.65.1"
   },
   "allowScripts": {
     "esbuild": true,
