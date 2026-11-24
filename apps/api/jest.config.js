@@ -6,5 +6,8 @@ module.exports = {
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: 'tsconfig.json' }] },
   testEnvironment: 'node',
   setupFiles: ['<rootDir>/test/setup-env.ts'],
+  globalSetup: '<rootDir>/test/global-setup.ts',
   testTimeout: 30000,
+  // All suites share one test database, so run them one at a time.
+  maxWorkers: 1,
 };

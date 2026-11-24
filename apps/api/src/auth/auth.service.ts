@@ -35,7 +35,7 @@ export class AuthService {
   async demoAccounts() {
     const users = await this.prisma.user.findMany({
       where: { email: { endsWith: '@demo.com' } },
-      orderBy: [{ role: 'desc' }, { email: 'asc' }],
+      orderBy: [{ role: 'asc' }, { email: 'asc' }],
       select: { email: true, name: true, role: true },
     });
     return users;
