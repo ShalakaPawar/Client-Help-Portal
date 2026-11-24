@@ -1,0 +1,14 @@
+node_modules/
+dist/
+coverage/
+*.log
+.DS_Store
+
+# local secrets and generated config
+.env
+!.env.example
+docker/livekit.yaml
+docker/egress.yaml
+
+# recordings and local data
+data/

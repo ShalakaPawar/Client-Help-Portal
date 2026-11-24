@@ -1,0 +1,203 @@
+// Data model for the Client Help Portal.
+// Partial unique indexes (one live call per consultant / per request) live in the
+// migration SQL because Prisma cannot declare partial indexes in the schema.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CONSULTANT
+  CLIENT
+}
+
+enum RequestStatus {
+  OPEN
+  IN_CALL
+  RESOLVED
+  CANCELLED
+}
+
+enum CallStatus {
+  WAITING
+  ACTIVE
+  ENDED
+  MISSED
+}
+
+enum ConsentStatus {
+  PENDING
+  GRANTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum RecordingStatus {
+  PENDING_CONSENT
+  NONE
+  STARTING
+  RECORDING
+  STOPPING
+  FINALIZING
+  AVAILABLE
+  FAILED
+}
+
+enum ProcessingStatus {
+  PENDING
+  TRANSCRIBING
+  SUMMARIZING
+  DONE
+  FAILED
+}
+
+enum EgressKind {
+  COMPOSITE
+  VOICE
+}
+
+enum EgressStatus {
+  STARTING
+  ACTIVE
+  ENDED
+  FAILED
+}
+
+enum Outcome {
+  RESOLVED
+  UNRESOLVED
+  UNCLEAR
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  name         String
+  passwordHash String
+  role         Role
+  /// For clients: the consultant they are assigned to.
+  consultantId String?
+  consultant   User?    @relation("Assignment", fields: [consultantId], references: [id])
+  clients      User[]   @relation("Assignment")
+  createdAt    DateTime @default(now())
+
+  requestsRaised     HelpRequest[] @relation("RequestClient")
+  requestsAssigned   HelpRequest[] @relation("RequestConsultant")
+  callsAsClient      Call[]        @relation("CallClient")
+  callsAsConsultant  Call[]        @relation("CallConsultant")
+}
+
+model HelpRequest {
+  id           String        @id @default(uuid())
+  clientId     String
+  client       User          @relation("RequestClient", fields: [clientId], references: [id])
+  consultantId String
+  consultant   User          @relation("RequestConsultant", fields: [consultantId], references: [id])
+  title        String        @db.VarChar(120)
+  description  String        @db.VarChar(2000)
+  status       RequestStatus @default(OPEN)
+  calls        Call[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@index([consultantId, status, createdAt])
+  @@index([clientId, createdAt])
+}
+
+model Call {
+  id           String        @id @default(uuid())
+  requestId    String
+  request      HelpRequest   @relation(fields: [requestId], references: [id])
+  clientId     String
+  client       User          @relation("CallClient", fields: [clientId], references: [id])
+  consultantId String
+  consultant   User          @relation("CallConsultant", fields: [consultantId], references: [id])
+  /// LiveKit room name: call-{id}
+  roomName     String        @unique
+  status       CallStatus    @default(WAITING)
+  consent      ConsentStatus @default(PENDING)
+  consentAt    DateTime?
+  startedAt    DateTime?
+  endedAt      DateTime?
+  createdAt    DateTime      @default(now())
+  recording    Recording?
+
+  @@index([clientId, createdAt])
+  @@index([consultantId, createdAt])
+}
+
+model Recording {
+  id                 String            @id @default(uuid())
+  callId             String            @unique
+  call               Call              @relation(fields: [callId], references: [id])
+  status             RecordingStatus   @default(STARTING)
+  /// Time zero of the video timeline (composite egress start).
+  compositeStartedAt DateTime?
+  durationMs         Int?
+  /// true when any output failed or is missing.
+  partial            Boolean           @default(false)
+  processingStatus   ProcessingStatus  @default(PENDING)
+  lastError          String?
+  egresses           RecordingEgress[]
+  transcript         Transcript?
+  summary            Summary?
+  createdAt          DateTime          @default(now())
+  updatedAt          DateTime          @updatedAt
+}
+
+model RecordingEgress {
+  id          String       @id @default(uuid())
+  recordingId String
+  recording   Recording    @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  kind        EgressKind
+  /// For VOICE: whose microphone.
+  role        Role?
+  trackSid    String?
+  /// 1, 2, 3... a new voice piece after a refresh or mic re-publish.
+  pieceNo     Int          @default(1)
+  /// LiveKit egress id; webhooks are matched on it.
+  egressId    String       @unique
+  status      EgressStatus @default(STARTING)
+  startedAt   DateTime?
+  endedAt     DateTime?
+  /// Path relative to the recordings folder.
+  filePath    String
+  error       String?
+  createdAt   DateTime     @default(now())
+
+  /// A microphone track is recorded at most once (prevents double-start races).
+  @@unique([recordingId, trackSid])
+  @@index([recordingId])
+}
+
+/// Every LiveKit webhook is stored once, so a redelivered event is never handled twice.
+model WebhookEvent {
+  id         String   @id
+  type       String
+  receivedAt DateTime @default(now())
+}
+
+model Transcript {
+  recordingId String    @id
+  recording   Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  /// [{ speakerName, role, startMs, endMs, text }]
+  segments    Json
+  createdAt   DateTime  @default(now())
+}
+
+model Summary {
+  recordingId     String    @id
+  recording       Recording @relation(fields: [recordingId], references: [id], onDelete: Cascade)
+  overview        String
+  issuesDiscussed Json
+  resolution      String?
+  actionItems     Json
+  outcome         Outcome
+  model           String
+  createdAt       DateTime  @default(now())
+}

@@ -1,0 +1,37 @@
+{
+  "name": "client-help-portal",
+  "private": true,
+  "description": "Consultant ↔ client help portal with screen-share calls, server-side recording, transcripts and summaries",
+  "engines": {
+    "node": ">=20"
+  },
+  "workspaces": [
+    "packages/shared",
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "dev": "npm run build -w packages/shared && concurrently -k -n shared,api,web -c gray,blue,green \"npm:dev -w packages/shared\" \"npm:start:dev -w apps/api\" \"npm:dev -w apps/web\"",
+    "infra:up": "docker compose up -d --wait",
+    "infra:down": "docker compose down",
+    "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",
+    "lint": "npm run lint -w apps/api && npm run lint -w apps/web",
+    "typecheck": "npm run build -w packages/shared && npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "test": "npm run build -w packages/shared && npm run test -w apps/api && npm run test -w apps/web",
+    "db:reset": "node scripts/db-reset.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.1"
+  },
+  "allowScripts": {
+    "esbuild": true,
+    "prisma": true,
+    "@prisma/client": true,
+    "@prisma/engines": true,
+    "ffmpeg-static": true,
+    "msgpackr-extract": true,
+    "@parcel/watcher": false,
+    "fsevents": false
+  }
+}

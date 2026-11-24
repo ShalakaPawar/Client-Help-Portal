@@ -1,0 +1,10 @@
+# LiveKit Egress config (local development). Filled in by `npm run setup`.
+log_level: info
+api_key: __LIVEKIT_API_KEY__
+api_secret: __LIVEKIT_API_SECRET__
+# Egress shares LiveKit's network namespace (see compose.yaml), so 127.0.0.1 is the LiveKit server.
+ws_url: ws://127.0.0.1:7880
+# Allows the composite template page to connect to the non-TLS local websocket.
+insecure: true
+redis:
+  address: redis:6379
