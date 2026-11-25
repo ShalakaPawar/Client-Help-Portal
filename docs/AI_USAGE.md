@@ -30,6 +30,8 @@ The project was built with an AI coding assistant (Claude Code). The approach:
 | Only one of the two voice recorders started | Smoke test + DB rows (second start timed out) | Egress reserves CPU per recorder and Colima has 4 CPUs; lowered `cpu_cost` for local use |
 | Voice files only appear when a recorder finishes | Smoke test checked too early | Check after the call ends (documented) |
 | API watch mode stopped emitting after a production build | `npm run dev` failed: `dist/main` missing | Removed TypeScript `incremental` (Nest `deleteOutDir` + incremental cache skips emit); ignore `*.tsbuildinfo` |
+| Finished processing wiped the "video missing" error, so History showed "unknown error" | New test for a missing video | Errors are only cleared by an explicit Retry |
+| Plan vs code cross-check found gaps: no `room_finished` handling, no 60 s presence grace, no 25-min warning, no CSP, no resolve/reopen on History, three planned tests missing | Line-by-line review of the plan against the code | All added, with tests |
 | ESLint `no-undef` flagged browser globals in TypeScript files | Lint | Disabled for TS (the compiler already checks it), as typescript-eslint recommends |
 
 ## Real-media smoke test

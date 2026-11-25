@@ -8,6 +8,8 @@ export const ProcessingJob = { PROCESS_RECORDING: 'process-recording' } as const
 export const TimerJob = {
   /** Client did not join in time -> MISSED. */
   RING_TIMEOUT: 'ring-timeout',
+  /** Someone left; if still gone after the grace period -> tell the other person. */
+  PRESENCE_GRACE: 'presence-grace',
   /** Someone left; if both are still gone -> end the call. */
   AUTO_END_CHECK: 'auto-end-check',
   /** Maximum call length reached -> end the call. */
@@ -22,7 +24,8 @@ export interface ProcessRecordingData {
 }
 
 export interface TimerData {
-  id: string; // callId or recordingId depending on the job
+  /** callId or recordingId; for PRESENCE_GRACE: `${callId}.${userId}` (ids are uuids, no dots). */
+  id: string;
 }
 
 export const processingJobId = (recordingId: string) => `rec-${recordingId}`;

@@ -25,6 +25,17 @@ const loadError = ref<string | null>(null);
 const busy = ref(false);
 const presenceNote = ref<string | null>(null);
 const showEndDialog = ref(false);
+const maxCallMinutes = ref<number | null>(null);
+const now = ref(Date.now());
+const clock = setInterval(() => (now.value = Date.now()), 10_000);
+
+/** Minutes left before the automatic end (shown in the last 5 minutes). */
+const minutesLeft = computed(() => {
+  if (!maxCallMinutes.value || !call.value?.startedAt || call.value.status !== 'ACTIVE') return null;
+  const endsAt = new Date(call.value.startedAt).getTime() + maxCallMinutes.value * 60_000;
+  const left = Math.ceil((endsAt - now.value) / 60_000);
+  return left <= 5 ? Math.max(left, 0) : null;
+});
 
 const other = computed(() => (call.value ? (auth.isClient ? call.value.consultant : call.value.client) : null));
 const recordingOn = computed(() => {
@@ -40,6 +51,7 @@ onMounted(async () => {
       ? await http.post<LiveKitJoinDto>(`/calls/${callId}/join`)
       : await http.get<LiveKitJoinDto>(`/calls/${callId}/livekit-token`);
     call.value = info.call;
+    maxCallMinutes.value = info.maxCallMinutes;
     callStore.apply(info.call);
     await lk.connect(info.livekitUrl, info.token);
   } catch (err) {
@@ -71,7 +83,10 @@ const unsubscribers = [
     if (p.callId === callId) presenceNote.value = null;
   }),
 ];
-onBeforeUnmount(() => unsubscribers.forEach((u) => u()));
+onBeforeUnmount(() => {
+  unsubscribers.forEach((u) => u());
+  clearInterval(clock);
+});
 
 async function answerConsent(granted: boolean) {
   busy.value = true;
@@ -148,6 +163,9 @@ function onEndClick() {
       <!-- Notices -->
       <div v-if="lk.state.value === 'moved'" class="card border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
         This call is now open in another tab or window. You can close this one.
+      </div>
+      <div v-if="minutesLeft !== null" class="card border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+        This call will end automatically in about {{ minutesLeft }} min ({{ maxCallMinutes }}-minute limit).
       </div>
       <div v-if="presenceNote" class="card border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">{{ presenceNote }}</div>
       <div v-if="lk.mediaError.value" class="card border-rose-200 bg-rose-50 p-3 text-sm text-rose-800" role="alert">

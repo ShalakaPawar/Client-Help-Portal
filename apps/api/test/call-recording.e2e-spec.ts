@@ -8,6 +8,9 @@ import request from 'supertest';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { QueueService } from '../src/queue/queue.service';
 import { WebhookService } from '../src/livekit/webhook.service';
+import { RealtimeService } from '../src/realtime/realtime.service';
+import { CallsService } from '../src/calls/calls.service';
+import { RecordingsService } from '../src/recordings/recordings.service';
 import type { LiveKitEvent } from '../src/livekit/livekit.types';
 import { auth, createLiveKitMock, createTestApp, LiveKitMock, loginAs, resetDatabase } from './helpers';
 
@@ -185,6 +188,64 @@ describe('Calls and recording', () => {
     const rec = await prisma.recording.findFirstOrThrow();
     expect(rec.partial).toBe(true);
     expect(rec.status).toBe('FINALIZING');
+    expect(queue.enqueueProcessing).toHaveBeenCalledTimes(1);
+  });
+
+  it('a disconnect is announced only if the person is still gone after the grace period', async () => {
+    const callId = await activeCall();
+    const realtime = app.get(RealtimeService);
+    const emit = jest.spyOn(realtime, 'emitTo');
+    const calls = app.get(CallsService);
+    const clientId = ids['client1@demo.com'];
+    const left = event({ event: 'participant_left', roomName: `call-${callId}`, participant: { identity: clientId, isRecorder: false } });
+
+    await webhooks.handle(left);
+    expect(queue.schedule).toHaveBeenCalledWith('presence-grace', `${callId}.${clientId}`, 60_000);
+    expect(queue.schedule).toHaveBeenCalledWith('auto-end-check', callId, 180_000);
+    expect(emit).not.toHaveBeenCalledWith(expect.anything(), 'participant:left', expect.anything()); // not yet
+
+    // Came back within the grace period (e.g. a quick refresh): nothing is announced.
+    livekit.participants = [{ identity: clientId, isRecorder: false, micTrackSids: [] }];
+    await calls.presenceGraceExpired(callId, clientId);
+    expect(emit).not.toHaveBeenCalledWith(expect.anything(), 'participant:left', expect.anything());
+
+    // Still gone when the grace period ends: the consultant is told.
+    livekit.participants = [];
+    await calls.presenceGraceExpired(callId, clientId);
+    expect(emit).toHaveBeenCalledWith(ids['consultant@demo.com'], 'participant:left', expect.objectContaining({ callId, role: 'CLIENT' }));
+
+    // Rejoining cancels the timers.
+    await webhooks.handle(event({ event: 'participant_joined', roomName: `call-${callId}`, participant: { identity: clientId, isRecorder: false } }));
+    expect(queue.cancel).toHaveBeenCalledWith('presence-grace', `${callId}.${clientId}`);
+    expect(queue.cancel).toHaveBeenCalledWith('auto-end-check', callId);
+  });
+
+  it('room_finished from LiveKit ends a call we still think is live (safety net)', async () => {
+    const callId = await activeCall();
+    await webhooks.handle(event({ event: 'room_finished', roomName: `call-${callId}` }));
+    expect((await prisma.call.findUniqueOrThrow({ where: { id: callId } })).status).toBe('ENDED');
+  });
+
+  it('if an "egress ended" event is lost, the fallback check asks LiveKit and still finalizes', async () => {
+    const callId = await activeCall();
+    livekit.participants = [{ identity: ids['client1@demo.com'], isRecorder: false, micTrackSids: ['TR_mic'] }];
+    await http().post(`/api/calls/${callId}/consent`).set(auth(t.client1)).send({ granted: true }).expect(200);
+    await http().post(`/api/calls/${callId}/end`).set(auth(t.client1)).expect(200);
+    expect(queue.schedule).toHaveBeenCalledWith('egress-check', expect.any(String), 120_000);
+
+    const [composite, voice] = await prisma.recordingEgress.findMany({ orderBy: { createdAt: 'asc' } });
+    // LiveKit reports the composite as complete; the voice recorder is unknown (no answer).
+    livekit.getEgress.mockImplementation(async (id: string) =>
+      id === composite.egressId ? { egressId: id, state: 'complete', startedAt: new Date(), endedAt: new Date(), error: null } : null,
+    );
+    const recording = await prisma.recording.findFirstOrThrow();
+    await app.get(RecordingsService).checkEgress(recording.id);
+
+    const after = await prisma.recordingEgress.findMany();
+    expect(after.find((e) => e.id === composite.id)!.status).toBe('ENDED');
+    expect(after.find((e) => e.id === voice.id)!.status).toBe('FAILED');
+    const rec = await prisma.recording.findFirstOrThrow();
+    expect(rec).toMatchObject({ status: 'FINALIZING', partial: true });
     expect(queue.enqueueProcessing).toHaveBeenCalledTimes(1);
   });
 

@@ -22,6 +22,10 @@ export class TimersProcessor extends WorkerHost {
     switch (job.name) {
       case TimerJob.RING_TIMEOUT:
         return this.calls.markMissed(job.data.id);
+      case TimerJob.PRESENCE_GRACE: {
+        const [callId, userId] = job.data.id.split('.');
+        return this.calls.presenceGraceExpired(callId, userId);
+      }
       case TimerJob.AUTO_END_CHECK:
         return this.calls.autoEndIfEmpty(job.data.id);
       case TimerJob.CALL_CAP:

@@ -17,9 +17,10 @@ import { APP_CONFIG, AppConfig } from '../config/env';
 import { canChangeConsent, canTransition, LIVE_CALL_STATUSES, roomNameFor } from './call-rules';
 
 const RING_TIMEOUT_MS = 2 * 60_000;
+const PRESENCE_GRACE_MS = 60_000;
 const AUTO_END_AFTER_MS = 3 * 60_000;
 
-export type EndReason = 'user' | 'auto-end' | 'time-cap';
+export type EndReason = 'user' | 'auto-end' | 'time-cap' | 'room-finished';
 
 @Injectable()
 export class CallsService {
@@ -202,15 +203,28 @@ export class CallsService {
     await this.requests.notifyUpdatedById(call.requestId);
   }
 
-  /** LiveKit says a participant left: tell the other side and check again later. */
+  /**
+   * LiveKit says a participant left. A quick refresh or network blip should not alarm the
+   * other person, so they are told only if the person is still gone after a grace period.
+   * If both are gone for longer, the call ends automatically.
+   */
   async onParticipantLeft(roomName: string, identity: string) {
-    const call = await this.prisma.call.findUnique({ where: { roomName }, include: { client: true, consultant: true } });
+    const call = await this.prisma.call.findUnique({ where: { roomName } });
     if (!call || call.status !== CallStatus.ACTIVE) return;
-    const leaver = identity === call.clientId ? call.client : identity === call.consultantId ? call.consultant : null;
-    if (!leaver) return;
-    const other = leaver.id === call.clientId ? call.consultantId : call.clientId;
-    this.realtime.emitTo(other, SocketEvent.PARTICIPANT_LEFT, { callId: call.id, role: leaver.role, name: leaver.name });
+    if (identity !== call.clientId && identity !== call.consultantId) return;
+    await this.queue.schedule(TimerJob.PRESENCE_GRACE, `${call.id}.${identity}`, PRESENCE_GRACE_MS);
     await this.queue.schedule(TimerJob.AUTO_END_CHECK, call.id, AUTO_END_AFTER_MS);
+  }
+
+  /** Grace period over: if the person has not come back, tell the other participant. */
+  async presenceGraceExpired(callId: string, userId: string) {
+    const call = await this.prisma.call.findUnique({ where: { id: callId }, include: { client: true, consultant: true } });
+    if (!call || call.status !== CallStatus.ACTIVE) return;
+    const people = await this.livekit.listParticipants(call.roomName).catch(() => []);
+    if (people.some((p) => p.identity === userId)) return; // came back in time
+    const leaver = userId === call.clientId ? call.client : call.consultant;
+    const other = userId === call.clientId ? call.consultantId : call.clientId;
+    this.realtime.emitTo(other, SocketEvent.PARTICIPANT_LEFT, { callId, role: leaver.role, name: leaver.name });
   }
 
   async onParticipantJoined(roomName: string, identity: string) {
@@ -218,8 +232,18 @@ export class CallsService {
     if (!call || call.status !== CallStatus.ACTIVE) return;
     const joiner = identity === call.clientId ? call.client : identity === call.consultantId ? call.consultant : null;
     if (!joiner) return;
+    await this.queue.cancel(TimerJob.PRESENCE_GRACE, `${call.id}.${identity}`);
+    await this.queue.cancel(TimerJob.AUTO_END_CHECK, call.id); // someone is here, so no auto-end
     const other = joiner.id === call.clientId ? call.consultantId : call.clientId;
     this.realtime.emitTo(other, SocketEvent.PARTICIPANT_RETURNED, { callId: call.id, role: joiner.role, name: joiner.name });
+  }
+
+  /** Safety net: LiveKit closed the room (e.g. empty for too long) while we still think the call is live. */
+  async onRoomFinished(roomName: string) {
+    const call = await this.prisma.call.findUnique({ where: { roomName } });
+    if (!call) return;
+    if (call.status === CallStatus.WAITING) return this.markMissed(call.id);
+    if (call.status === CallStatus.ACTIVE) await this.endCall(call.id, 'room-finished');
   }
 
   /** Auto-end only if neither participant is in the room any more. */
@@ -260,6 +284,6 @@ export class CallsService {
   private async joinInfo(user: AuthUser, call: CallDto): Promise<LiveKitJoinDto> {
     const room = (await this.prisma.call.findUniqueOrThrow({ where: { id: call.id }, select: { roomName: true } })).roomName;
     const token = await this.livekit.createToken({ identity: user.id, name: user.name, room, role: user.role });
-    return { call, livekitUrl: this.livekit.publicUrl, token };
+    return { call, livekitUrl: this.livekit.publicUrl, token, maxCallMinutes: this.config.MAX_CALL_MINUTES };
   }
 }

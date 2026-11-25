@@ -21,6 +21,7 @@ const videoUrl = ref<string | null>(null);
 const video = ref<HTMLVideoElement | null>(null);
 const currentMs = ref(0);
 const retrying = ref(false);
+const updatingRequest = ref(false);
 
 const recording = computed(() => detail.value?.call.recording ?? null);
 const segments = computed<TranscriptSegmentDto[]>(() => detail.value?.transcript ?? []);
@@ -87,6 +88,21 @@ async function retry() {
   }
 }
 
+/** Consultant: mark the help request resolved, or reopen it. */
+async function setRequest(action: 'resolve' | 'reopen') {
+  if (!detail.value) return;
+  updatingRequest.value = true;
+  try {
+    await http.post(`/requests/${detail.value.call.requestId}/${action}`);
+    toasts.success(action === 'resolve' ? 'Request marked resolved.' : 'Request reopened.');
+    await load();
+  } catch (err) {
+    toasts.error(err);
+  } finally {
+    updatingRequest.value = false;
+  }
+}
+
 onMounted(load);
 const offs = [
   onSocket('processing:updated', (p) => p.callId === callId && load()),
@@ -112,6 +128,15 @@ onBeforeUnmount(() => offs.forEach((off) => off()));
           </p>
         </div>
         <StatusBadge v-if="recording?.partial" status="FAILED" label="partly recorded" />
+        <StatusBadge :status="detail.requestStatus" :label="`request ${detail.requestStatus.replace('_', ' ').toLowerCase()}`" />
+        <template v-if="auth.isConsultant">
+          <button v-if="detail.requestStatus === 'OPEN'" class="btn-secondary py-1.5" :disabled="updatingRequest" @click="setRequest('resolve')">
+            Mark resolved
+          </button>
+          <button v-else-if="detail.requestStatus === 'RESOLVED'" class="btn-secondary py-1.5" :disabled="updatingRequest" @click="setRequest('reopen')">
+            Reopen request
+          </button>
+        </template>
       </div>
 
       <div v-if="processingText" class="card flex items-center gap-3 p-4 text-sm text-slate-600">

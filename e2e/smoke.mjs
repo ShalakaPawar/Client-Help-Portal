@@ -113,11 +113,16 @@ try {
   await shot(consultant, '1-consultant-in-call');
   await shot(client, '2-client-in-call');
 
+  // The composite recorder starts a headless Chrome first (~7-9 s), then writes a 4 s segment at a time.
   const recDir = newestDir(RECORDINGS);
   if (!recDir) fail('no recording folder was created in data/recordings');
   else {
-    const segs = listFiles(join(recDir, 'composite')).filter((f) => f.endsWith('.ts'));
-    segs.length ? ok(`composite video segments written DURING the call: ${segs.length}`) : fail('no composite segments yet');
+    let segs = [];
+    for (let i = 0; i < 20 && !segs.length; i++) {
+      segs = listFiles(join(recDir, 'composite')).filter((f) => f.endsWith('.ts'));
+      if (!segs.length) await consultant.waitForTimeout(1000);
+    }
+    segs.length ? ok(`composite video segments written DURING the call: ${segs.length}`) : fail('no composite segments after 20 s');
   }
 
   step('Consultant ends the call and marks it resolved');

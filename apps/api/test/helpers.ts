@@ -24,7 +24,7 @@ export function createLiveKitMock() {
     startCompositeEgress: jest.fn(async () => snapshot(`EG_comp_${++n}`)),
     startTrackEgress: jest.fn(async () => snapshot(`EG_voice_${++n}`)),
     stopEgress: jest.fn(async () => undefined),
-    getEgress: jest.fn(async () => null),
+    getEgress: jest.fn(async (_egressId: string): Promise<EgressSnapshot | null> => null),
     receiveWebhook: jest.fn(async () => {
       throw new Error('invalid signature');
     }),

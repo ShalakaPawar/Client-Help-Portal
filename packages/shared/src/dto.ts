@@ -69,6 +69,8 @@ export interface LiveKitJoinDto {
   call: CallDto;
   livekitUrl: string;
   token: string;
+  /** Calls end automatically after this many minutes (the UI warns 5 minutes before). */
+  maxCallMinutes: number;
 }
 
 export interface TranscriptSegmentDto {
@@ -95,6 +97,8 @@ export interface SummaryDto {
 
 export interface HistoryDetailDto {
   call: CallDto;
+  /** Current status of the help request (the consultant can resolve/reopen it from here). */
+  requestStatus: RequestStatus;
   transcript: TranscriptSegmentDto[] | null;
   summary: SummaryDto | null;
 }

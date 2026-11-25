@@ -3,6 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      Content-Security-Policy: the login token lives in sessionStorage, so limit what an injected
+      script could do: only this site's scripts run, and network access is limited to this site
+      and the local LiveKit server. (Vue also escapes all rendered text; no v-html is used.)
+    -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; connect-src 'self' ws://localhost:5173 ws://localhost:7880 http://localhost:7880; object-src 'none'; base-uri 'self'; form-action 'self'"
+    />
     <title>Client Help Portal</title>
   </head>
   <body class="bg-slate-50 text-slate-900 antialiased">

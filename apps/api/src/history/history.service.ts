@@ -36,6 +36,7 @@ export class HistoryService {
     if (!call) throw AppException.notFound('Call');
     return {
       call: toCallDto(call),
+      requestStatus: call.request.status,
       transcript: call.recording?.transcript ? toTranscriptDto(call.recording.transcript.segments) : null,
       summary: call.recording?.summary ? toSummaryDto(call.recording.summary) : null,
     };

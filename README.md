@@ -153,6 +153,7 @@ processing runs. Screenshots go to `e2e/output/`.
 - Egress runs headless Chrome (large image, ~2–4 GB RAM) and loads its layout page from the internet.
 - Calls are capped at 30 minutes (`MAX_CALL_MINUTES`). Two-person calls only. English transcription.
 - After a refresh the client must pick the screen again; the video shows a short gap.
+- The composite video starts ~7–9 s after consent (Egress launches headless Chrome first); voice files start immediately, so the transcript also covers those first seconds.
 - Talking over each other appears as separate lines in time order. Echo needs headphones (plus browser echo cancellation and a merge-time dedupe).
 
 See [`docs/decisions.md`](docs/decisions.md) for every design choice with alternatives and trade-offs, and

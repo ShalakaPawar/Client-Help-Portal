@@ -36,6 +36,9 @@ export class WebhookService {
           await this.calls.onMicPublished(e.roomName, e.participant.identity, e.track.sid);
         }
         break;
+      case 'room_finished':
+        if (e.roomName) await this.calls.onRoomFinished(e.roomName);
+        break;
       case 'egress_started':
       case 'egress_updated':
       case 'egress_ended':

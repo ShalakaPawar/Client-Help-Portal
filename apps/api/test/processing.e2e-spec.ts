@@ -128,6 +128,32 @@ describe('Processing job', () => {
     expect(await prisma.summary.findUnique({ where: { recordingId } })).not.toBeNull();
   });
 
+  it('finalize: a broken video stops processing with FAILED and a readable error (Retry possible)', async () => {
+    const recordingId = await recordedCall();
+    await prisma.recording.update({ where: { id: recordingId }, data: { status: 'FINALIZING' } });
+    const playlist = join(config.recordingsDirAbs, storage.playlist(recordingId));
+    mkdirSync(dirname(playlist), { recursive: true });
+    writeFileSync(playlist, '#EXTM3U\n#EXTINF:4.0,\nmissing-segment.ts\n#EXT-X-ENDLIST\n');
+
+    await expect(processor.process(job(recordingId))).rejects.toBeInstanceOf(UnrecoverableError);
+    const rec = await prisma.recording.findUniqueOrThrow({ where: { id: recordingId } });
+    expect(rec.status).toBe('FAILED');
+    expect(rec.lastError).toMatch(/ffmpeg/);
+    expect(stt.transcribe).not.toHaveBeenCalled();
+  });
+
+  it('finalize: if the video is missing entirely, the transcript is still made from the voice files', async () => {
+    const recordingId = await recordedCall();
+    await prisma.recording.update({ where: { id: recordingId }, data: { status: 'FINALIZING' } });
+    stt.transcribe.mockResolvedValue([{ start: 0, end: 1, text: 'hello' }]);
+    llm.summarize.mockResolvedValue({ overview: 'ok', issuesDiscussed: [], resolution: '', actionItems: [], outcome: 'UNCLEAR', model: 'm' });
+
+    await processor.process(job(recordingId));
+    const rec = await prisma.recording.findUniqueOrThrow({ where: { id: recordingId } });
+    expect(rec).toMatchObject({ status: 'FAILED', partial: true, lastError: 'The video recording is missing', processingStatus: 'DONE' });
+    expect(await prisma.transcript.findUnique({ where: { recordingId } })).not.toBeNull();
+  });
+
   it('silence: no Claude call, an honest "no speech" summary', async () => {
     const recordingId = await recordedCall();
     stt.transcribe.mockResolvedValue([]);

@@ -18,7 +18,7 @@ export const requestInclude = {
 export const callInclude = {
   client: { select: { id: true, name: true } },
   consultant: { select: { id: true, name: true } },
-  request: { select: { title: true } },
+  request: { select: { title: true, status: true } },
   recording: true,
 } satisfies Prisma.CallInclude;
 

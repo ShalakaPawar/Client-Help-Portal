@@ -203,7 +203,8 @@ export class ProcessingProcessor extends WorkerHost implements OnApplicationBoot
   private async setProcessing(recordingId: string, status: ProcessingStatus, lastError: string | null) {
     const rec = await this.prisma.recording.update({
       where: { id: recordingId },
-      data: { processingStatus: status, ...(lastError !== null || status === ProcessingStatus.DONE ? { lastError } : {}) },
+      // Errors are only cleared by an explicit Retry, so a finished job keeps e.g. "video missing".
+      data: { processingStatus: status, ...(lastError !== null ? { lastError } : {}) },
       include: { call: true },
     });
     this.realtime.emitTo([rec.call.clientId, rec.call.consultantId], SocketEvent.PROCESSING_UPDATED, {
