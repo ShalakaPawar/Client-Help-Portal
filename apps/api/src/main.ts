@@ -7,11 +7,13 @@ import { raw } from 'express';
 import { AppModule } from './app.module';
 import { loadConfig } from './config/env';
 import { setupQueueBoard } from './queue/queue-board';
+import { RedisIoAdapter } from './realtime/redis-io.adapter';
 
 async function bootstrap() {
   const config = loadConfig(); // fail fast with a readable message
   const app = await NestFactory.create<NestExpressApplication>(AppModule, { bufferLogs: true });
   app.useLogger(app.get(Logger));
+  app.useWebSocketAdapter(new RedisIoAdapter(app, config));
   app.setGlobalPrefix('api');
   // LiveKit webhook signatures cover the exact bytes, so keep that body raw.
   app.use('/api/livekit/webhook', raw({ type: ['application/webhook+json', 'application/json'] }));

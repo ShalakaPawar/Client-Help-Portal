@@ -12,7 +12,11 @@ export const summarySchema = z.object({
   actionItems: z.array(z.object({ owner: z.enum(['CLIENT', 'CONSULTANT']), task: z.string().min(1) })),
   outcome: z.enum(['RESOLVED', 'UNRESOLVED', 'UNCLEAR']),
 });
-export type SummaryResult = z.infer<typeof summarySchema> & { model: string };
+export type SummaryResult = z.infer<typeof summarySchema> & {
+  model: string;
+  /** Token usage and time for this call (stored for the cost estimate). */
+  usage?: { inputTokens: number; outputTokens: number; latencyMs: number };
+};
 
 /** JSON schema sent to the API (structured outputs): the response must match it. */
 const SUMMARY_JSON_SCHEMA = {
@@ -72,6 +76,7 @@ export class ClaudeAdapter implements SummaryProvider {
     const model = this.config.CLAUDE_MODEL;
 
     let response;
+    const startedAt = Date.now();
     try {
       response = await client.beta.messages.create({
         model,
@@ -111,7 +116,15 @@ export class ClaudeAdapter implements SummaryProvider {
     }
     const parsed = summarySchema.safeParse(json);
     if (!parsed.success) throw new ProviderError(`Claude summary did not match the schema: ${parsed.error.message}`, true);
-    return { ...parsed.data, model: response.model ?? model };
+    return {
+      ...parsed.data,
+      model: response.model ?? model,
+      usage: {
+        inputTokens: response.usage?.input_tokens ?? 0,
+        outputTokens: response.usage?.output_tokens ?? 0,
+        latencyMs: Date.now() - startedAt,
+      },
+    };
   }
 
   private getClient() {

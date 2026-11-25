@@ -6,6 +6,8 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { LiveKitService } from '../src/livekit/livekit.service';
 import { seed, DEMO_PASSWORD } from '../prisma/seed';
+import { RedisIoAdapter } from '../src/realtime/redis-io.adapter';
+import { loadConfig } from '../src/config/env';
 import type { EgressSnapshot, ParticipantSnapshot } from '../src/livekit/livekit.types';
 
 /** LiveKit test double: records calls, never touches the network. */
@@ -40,6 +42,7 @@ export async function createTestApp(livekit: LiveKitMock = createLiveKitMock()) 
     .useValue(livekit)
     .compile();
   const app: INestApplication = moduleRef.createNestApplication({ logger: false });
+  app.useWebSocketAdapter(new RedisIoAdapter(app, loadConfig()));
   app.setGlobalPrefix('api');
   app.use('/api/livekit/webhook', raw({ type: ['application/webhook+json', 'application/json'] }));
   await app.init();

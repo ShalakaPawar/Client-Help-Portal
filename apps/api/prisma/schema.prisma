@@ -199,5 +199,9 @@ model Summary {
   actionItems     Json
   outcome         Outcome
   model           String
+  /// Claude usage for this summary (used for the cost estimate in docs/COSTS.md).
+  inputTokens     Int?
+  outputTokens    Int?
+  latencyMs       Int?
   createdAt       DateTime  @default(now())
 }

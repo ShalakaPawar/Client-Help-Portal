@@ -8,8 +8,11 @@
  *
  * Prereqs: Docker services up (`npm run setup`) and `npm run dev` running.
  * Usage:   npm run e2e:smoke   (HEADED=1 to watch it)
+ *          SPEECH=1 npm run e2e:smoke   (macOS: each person "speaks" a scripted support dialog
+ *          generated with `say`, so Deepgram and Claude get real speech)
  */
 import { chromium } from 'playwright-core';
+import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,20 +35,27 @@ const fail = (msg) => {
   process.exitCode = 1;
 };
 
-const browser = await chromium.launch({
-  executablePath: CHROME,
-  headless: !process.env.HEADED,
-  args: [
-    '--use-fake-ui-for-media-stream',
-    '--use-fake-device-for-media-stream',
-    `--auto-select-tab-capture-source-by-title=${SHARED_TAB_TITLE}`,
-    '--autoplay-policy=no-user-gesture-required',
-  ],
-});
+const SPEECH = !!process.env.SPEECH;
+const speech = SPEECH ? makeSpeech() : null;
+const baseArgs = [
+  '--use-fake-ui-for-media-stream',
+  '--use-fake-device-for-media-stream',
+  `--auto-select-tab-capture-source-by-title=${SHARED_TAB_TITLE}`,
+  '--autoplay-policy=no-user-gesture-required',
+];
+// One browser per person: the fake microphone file is a per-browser setting.
+const launch = (audioFile) =>
+  chromium.launch({
+    executablePath: CHROME,
+    headless: !process.env.HEADED,
+    args: [...baseArgs, ...(audioFile ? [`--use-file-for-fake-audio-capture=${audioFile}`] : [])],
+  });
+const consultantBrowser = await launch(speech?.consultant);
+const clientBrowser = await launch(speech?.client);
 
-// Two separate browser contexts = two separate users (like two windows/profiles).
-const consultantCtx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
-const clientCtx = await browser.newContext({ viewport: { width: 1280, height: 860 } });
+// Separate browsers = two separate users (like two windows/profiles).
+const consultantCtx = await consultantBrowser.newContext({ viewport: { width: 1280, height: 860 } });
+const clientCtx = await clientBrowser.newContext({ viewport: { width: 1280, height: 860 } });
 for (const ctx of [consultantCtx, clientCtx]) await ctx.grantPermissions(['microphone'], { origin: BASE });
 
 const consultant = await consultantCtx.newPage();
@@ -154,8 +164,12 @@ try {
     .then((h) => h.jsonValue())
     .catch(() => 'timeout');
   await shot(consultant, '3-history');
-  if (result === 'done') ok('video, transcript and summary are shown');
-  else console.log(`  \x1b[33m!\x1b[0m processing result: ${result}`);
+  if (result === 'done') {
+    ok('video, transcript and summary are shown');
+    const lines = await consultant.locator('ol li').count();
+    const overview = await consultant.locator('section', { hasText: 'Summary' }).locator('p').first().innerText();
+    console.log(`  transcript lines: ${lines}\n  summary: ${overview}`);
+  } else console.log(`  \x1b[33m!\x1b[0m processing result: ${result}`);
 
   if (recDir && existsSync(join(recDir, 'final', 'composite.mp4'))) {
     ok(`final video: ${Math.round(statSync(join(recDir, 'final', 'composite.mp4')).size / 1024)} KB`);
@@ -167,7 +181,42 @@ try {
 } finally {
   if (errors.length) console.log(`  page errors:\n   ${errors.join('\n   ')}`);
   console.log(`\nScreenshots: ${OUT}`);
-  await browser.close();
+  await Promise.all([consultantBrowser.close(), clientBrowser.close()]);
+}
+
+/** macOS only: two voices read a short support conversation; pauses leave room for the other person. */
+function makeSpeech() {
+  const pause = (ms) => `[[slnc ${ms}]]`;
+  const lines = {
+    client: [
+      'Hi Sam, thanks for joining.',
+      pause(3000),
+      'When I click export on the monthly report, nothing happens at all.',
+      pause(4500),
+      'Okay, I can see the settings icon now. I cleared the export cache.',
+      pause(4000),
+      'It downloaded. That fixed it, thank you so much.',
+      pause(8000),
+    ],
+    consultant: [
+      pause(2000),
+      'Hi Alice, I can see your screen.',
+      pause(3500),
+      'Please open the settings icon at the top right and clear the export cache.',
+      pause(4000),
+      'Great. Now click export again.',
+      pause(4000),
+      'Perfect. I will also email you a short guide, and please update the app this week.',
+      pause(6000),
+    ],
+  };
+  const voices = { client: 'Samantha', consultant: 'Daniel' };
+  const out = {};
+  for (const who of ['client', 'consultant']) {
+    out[who] = join(OUT, `${who}-speech.wav`);
+    execFileSync('say', ['-v', voices[who], '-o', out[who], '--data-format=LEI16@48000', lines[who].join(' ')]);
+  }
+  return out;
 }
 
 /** A previous interrupted run can leave the consultant in a live call ("busy"); end it first. */

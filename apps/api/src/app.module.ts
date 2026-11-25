@@ -4,7 +4,6 @@ import { JwtModule } from '@nestjs/jwt';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ValidationPipe } from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
-import { randomUUID } from 'node:crypto';
 import { ConfigModule } from './config/config.module';
 import { APP_CONFIG, AppConfig } from './config/env';
 import { PrismaModule } from './prisma/prisma.module';
@@ -18,26 +17,15 @@ import { AuthModule } from './auth/auth.module';
 import { RequestsModule } from './requests/requests.module';
 import { CallsModule } from './calls/calls.module';
 import { RecordingsModule } from './recordings/recordings.module';
-import { ProcessingModule } from './processing/processing.module';
 import { HistoryModule } from './history/history.module';
 import { HealthController } from './health/health.controller';
+import { loggerParams } from './logging';
 
-const isTest = process.env.NODE_ENV === 'test';
-
+/** The API process: REST, WebSocket notifications, LiveKit webhooks and timers. */
 @Module({
   imports: [
     ConfigModule,
-    LoggerModule.forRoot({
-      pinoHttp: {
-        level: isTest ? 'silent' : process.env.LOG_LEVEL || 'info',
-        genReqId: (req) => (req.headers['x-request-id'] as string) || randomUUID(),
-        redact: ['req.headers.authorization', 'req.headers.cookie'],
-        // Media URLs carry a token in the path; don't write it to logs.
-        serializers: { req: (req) => ({ id: req.id, method: req.method, url: String(req.url).replace(/\/media\/[^/?]+/, '/media/***') }) },
-        autoLogging: { ignore: (req) => req.url?.startsWith('/api/health') ?? false },
-        transport: !isTest && process.env.NODE_ENV !== 'production' ? { target: 'pino-pretty', options: { singleLine: true } } : undefined,
-      },
-    }),
+    LoggerModule.forRoot(loggerParams('api')),
     JwtModule.registerAsync({
       global: true,
       inject: [APP_CONFIG],
@@ -60,7 +48,7 @@ const isTest = process.env.NODE_ENV === 'test';
     CallsModule,
     RecordingsModule,
     HistoryModule,
-    ...(isTest ? [] : [ProcessingModule]),
+    // No ProcessingModule here: recordings are processed by the separate worker process (src/worker.ts).
   ],
   controllers: [HealthController],
   providers: [

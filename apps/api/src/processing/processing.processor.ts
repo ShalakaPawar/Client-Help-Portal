@@ -194,8 +194,14 @@ export class ProcessingProcessor extends WorkerHost implements OnApplicationBoot
         actionItems: result.actionItems,
         outcome: result.outcome,
         model: result.model,
+        inputTokens: result.usage?.inputTokens,
+        outputTokens: result.usage?.outputTokens,
+        latencyMs: result.usage?.latencyMs,
       },
     });
+    this.logger.log(
+      `summary ${recordingId}: model=${result.model} in=${result.usage?.inputTokens} out=${result.usage?.outputTokens} ${result.usage?.latencyMs}ms`,
+    );
   }
 
   // ---- helpers ----

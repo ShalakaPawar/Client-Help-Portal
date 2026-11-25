@@ -61,6 +61,15 @@ export class QueueService {
     if (job) await job.remove().catch((err) => this.logger.debug(`cancel ${job.id}: ${(err as Error).message}`));
   }
 
+  /** Number of worker processes currently consuming the processing queue. */
+  async processingWorkers(): Promise<number> {
+    try {
+      return (await this.processing.getWorkers()).length;
+    } catch {
+      return 0;
+    }
+  }
+
   async ping(): Promise<boolean> {
     try {
       const client = (await this.processing.client) as unknown as { ping(): Promise<string> };

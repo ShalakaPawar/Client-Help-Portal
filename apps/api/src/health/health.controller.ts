@@ -21,12 +21,19 @@ export class HealthController {
   @Get()
   async check() {
     const database = await this.prisma.$queryRaw`SELECT 1`.then(() => true).catch(() => false);
-    const [redis, livekit, recordingsFolder] = await Promise.all([this.queue.ping(), this.livekit.ping(), this.storage.isWritable()]);
+    const [redis, livekit, recordingsFolder, workers] = await Promise.all([
+      this.queue.ping(),
+      this.livekit.ping(),
+      this.storage.isWritable(),
+      this.queue.processingWorkers(),
+    ]);
     const checks = {
       database,
       redis,
       livekit,
       recordingsFolder,
+      // The worker is a separate process: if it is down the API still works, recordings wait in the queue.
+      worker: workers > 0,
       deepgramKey: !!this.config.DEEPGRAM_API_KEY,
       anthropicKey: !!this.config.ANTHROPIC_API_KEY,
     };

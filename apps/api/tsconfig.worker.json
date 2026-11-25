@@ -1,0 +1,8 @@
+{
+  "extends": "./tsconfig.build.json",
+  "compilerOptions": {
+    // Separate output for the worker's own watch compiler in dev, so the API's and the
+    // worker's watchers never delete each other's files.
+    "outDir": "./dist-worker"
+  }
+}

@@ -16,3 +16,4 @@ data/
 # smoke test screenshots
 e2e/output/
 *.tsbuildinfo
+dist-worker/

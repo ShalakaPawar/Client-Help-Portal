@@ -1,4 +1,5 @@
 import { spawn } from 'node:child_process';
+import { setPriority } from 'node:os';
 import ffmpegStatic from 'ffmpeg-static';
 
 export class FfmpegError extends Error {}
@@ -23,6 +24,12 @@ export function hlsToMp4Args(playlistPath: string, outputPath: string): string[]
 export function runFfmpeg(bin: string, args: string[], timeoutMs = 10 * 60_000): Promise<void> {
   return new Promise((resolve, reject) => {
     const child = spawn(bin, args, { stdio: ['ignore', 'ignore', 'pipe'] });
+    // Lower CPU priority: a long finalize must not starve the API, LiveKit or the recorders.
+    try {
+      if (child.pid) setPriority(child.pid, 10);
+    } catch {
+      /* not permitted on this OS: run at normal priority */
+    }
     let stderr = '';
     child.stderr.on('data', (d) => (stderr = (stderr + d.toString()).slice(-4000)));
     const timer = setTimeout(() => {

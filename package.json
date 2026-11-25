@@ -1,7 +1,7 @@
 {
   "name": "client-help-portal",
   "private": true,
-  "description": "Consultant ↔ client help portal with screen-share calls, server-side recording, transcripts and summaries",
+  "description": "Consultant \u2194 client help portal with screen-share calls, server-side recording, transcripts and summaries",
   "engines": {
     "node": ">=20"
   },
@@ -12,7 +12,7 @@
   ],
   "scripts": {
     "setup": "node scripts/setup.mjs",
-    "dev": "npm run build -w packages/shared && concurrently -k -n shared,api,web -c gray,blue,green \"npm:dev -w packages/shared\" \"npm:start:dev -w apps/api\" \"npm:dev -w apps/web\"",
+    "dev": "npm run build -w packages/shared && concurrently -k -n shared,api,worker,web -c gray,blue,magenta,green \"npm:dev -w packages/shared\" \"npm:start:dev -w apps/api\" \"npm:start:worker:dev -w apps/api\" \"npm:dev -w apps/web\"",
     "infra:up": "docker compose up -d --wait",
     "infra:down": "docker compose down",
     "build": "npm run build -w packages/shared && npm run build -w apps/api && npm run build -w apps/web",

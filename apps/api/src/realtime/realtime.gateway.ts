@@ -9,13 +9,14 @@ export const userRoom = (userId: string) => `user:${userId}`;
 
 /**
  * WebSocket (Socket.IO) channel for app notifications only.
- * The JWT is checked once during the handshake; each socket joins `user:{id}`.
+ * The JWT is checked once during the handshake; each socket joins only its own `user:{id}` room,
+ * so a user can never receive another user's events.
+ * RedisIoAdapter (main.ts) lets the separate worker process (and future API replicas) emit to these rooms.
  * Browsers never send events: every change goes through REST.
  */
 @WebSocketGateway({ path: '/socket.io', transports: ['websocket'], cors: { origin: true } })
 export class RealtimeGateway implements OnGatewayInit, OnGatewayConnection {
   private readonly logger = new Logger(RealtimeGateway.name);
-
   @WebSocketServer()
   server: Server<ClientToServerEvents, ServerToClientEvents>;
 
