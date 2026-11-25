@@ -12,11 +12,10 @@ Deepgram (speech-to-text) · Claude (summary). Everything runs locally.
 | # | Deliverable | Where |
 |---|---|---|
 | 1 | Source code + README | this repo, this file |
-| 2 | Design document (architecture + key decisions) | [docs/DESIGN.md](docs/DESIGN.md) · one-page summary [docs/decisions.md](docs/decisions.md) |
+| 2 | Design document (architecture + key decisions) | [docs/DESIGN.md](docs/DESIGN.md) |
 | 3 | Known limits (measured) | [docs/LIMITS.md](docs/LIMITS.md) |
 | 4 | Approximate costs (LLM) | [docs/COSTS.md](docs/COSTS.md) |
-| 6 | Video of the working system | recorded with [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
-| — | How AI was used and checked | [docs/AI_USAGE.md](docs/AI_USAGE.md) |
+| 6 | Video of the working system | shared separately |
 
 ---
 
@@ -35,13 +34,17 @@ npm run dev        # http://localhost:5173  (runs shared, api, worker, web)
 
 The first `npm run setup` downloads the LiveKit Egress image (large, several minutes).
 
-### Demo accounts (password `Demo1234!`, or use the one-click buttons)
+### Accounts (password `Demo1234!` for all seeded accounts)
 
 | Account | Role | Notes |
 |---|---|---|
-| `consultant@demo.com` (Sam) | Consultant | Assigned: client1–3 |
-| `client1@demo.com` (Alice), `client2@demo.com` (Bob), `client3@demo.com` (Carol) | Client | |
+| `admin@demo.com` | Admin | Adds consultants, picks the default consultant, assigns clients. No access to calls or history |
+| `consultant@demo.com` (Sam) | Consultant | **Default consultant**: new client signups are assigned to Sam (an admin can change this) |
+| `client1@demo.com` (Alice), `client2@demo.com` (Bob), `client3@demo.com` (Carol) | Client | Assigned to Sam |
 | `consultant2@demo.com` (Riya) → `client4@demo.com` (Dan) | | Only there to prove data isolation |
+
+**New clients** can create their own account at **/signup** ("Create an account" on the login page). Consultants are added
+by the admin at **/admin**.
 
 **Two users at once:** login is stored per tab (sessionStorage), so open two Chrome windows and log in as a different
 user in each.
@@ -56,7 +59,7 @@ user in each.
 7. **History** → the video, the transcript ("Alice Client (Client): …"), click a line to seek, and the summary.
 8. Log in as `client2` → none of client1's data is visible.
 
-Queue dashboard (dev): http://localhost:3000/api/admin/queues · Health: http://localhost:3000/api/health
+Queue dashboard (dev): http://localhost:4610/api/admin/queues · Health: http://localhost:4610/api/health
 
 ---
 
@@ -69,7 +72,7 @@ Queue dashboard (dev): http://localhost:3000/api/admin/queues · Health: http://
         │ REST + WebSocket (Socket.IO)     ▼   ▼
         ▼                          ┌─────────────────────┐   hidden recorder   ┌──────────────────────┐
   Vite :5173 (proxy) ──▶ NestJS ──▶│ LiveKit server (SFU)│◀───────────────────▶│ LiveKit Egress        │
-                     :3000  ▲  API └─────────────────────┘                     │ composite (HLS, 4 s)  │
+                     :4610  ▲  API └─────────────────────┘                     │ composite (HLS, 4 s)  │
                             │  tokens, egress start/stop                       │ + 1 .ogg per mic      │
                             └─ webhooks (joined/left, track, egress) ─────────  └──────────┬───────────┘
                                                                                           ▼
@@ -104,7 +107,7 @@ apps/web      Vue 3: dashboards, call room (livekit-client), history with player
 packages/shared   enums, response types and socket event types used by both
 docker/       LiveKit/Egress config templates (filled by setup)
 scripts/      setup.mjs, db-reset.mjs
-docs/         decisions.md, AI_USAGE.md, demo-checklist.md
+docs/         DESIGN, LIMITS, COSTS
 ```
 
 ---
@@ -113,7 +116,7 @@ docs/         decisions.md, AI_USAGE.md, demo-checklist.md
 
 | Requirement | How |
 |---|---|
-| 1. Two roles, seeded users, simple login, two windows | `prisma/seed.ts`, JWT in sessionStorage, one-click login |
+| 1. Two roles, seeded users, simple login, two windows | `prisma/seed.ts`, JWT in sessionStorage; plus client signup and an admin role for managing consultants |
 | 2. Request appears instantly | REST create → Socket.IO `request:created` to the consultant |
 | 3. Screen-share call, both talk | LiveKit room per call; client publishes screen + mic, consultant mic |
 | 4. Consent before recording; recorded + uploaded during the call | Consent saved server-side, only then NestJS starts Egress; segments/voice files written live |
@@ -168,5 +171,4 @@ processing runs. Screenshots go to `e2e/output/`.
 - The composite video starts ~7–9 s after consent (Egress launches headless Chrome first); voice files start immediately, so the transcript also covers those first seconds.
 - Talking over each other appears as separate lines in time order. Echo needs headphones (plus browser echo cancellation and a merge-time dedupe).
 
-See [`docs/decisions.md`](docs/decisions.md) for every design choice with alternatives and trade-offs, and
-[`docs/AI_USAGE.md`](docs/AI_USAGE.md) for how AI was used and checked.
+See [`docs/DESIGN.md`](docs/DESIGN.md) for the architecture, flows and every design choice with its reason.

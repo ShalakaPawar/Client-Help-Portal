@@ -13,10 +13,27 @@ export const useAuth = defineStore('auth', () => {
   const isLoggedIn = computed(() => !!user.value && !!token.value);
   const isClient = computed(() => user.value?.role === Role.CLIENT);
   const isConsultant = computed(() => user.value?.role === Role.CONSULTANT);
-  const homeRoute = computed(() => (isConsultant.value ? '/consultant' : '/client'));
+  const isAdmin = computed(() => user.value?.role === Role.ADMIN);
+  const homeRoute = computed(() => (isAdmin.value ? '/admin' : isConsultant.value ? '/consultant' : '/client'));
 
   async function login(email: string, password: string) {
-    const res = await http.post<LoginResponse>('/auth/login', { email, password });
+    startSession(await http.post<LoginResponse>('/auth/login', { email, password }));
+  }
+
+  /** Client self-signup; logs the new client in. */
+  async function signup(name: string, email: string, password: string) {
+    startSession(await http.post<LoginResponse>('/auth/signup', { name, email, password }));
+  }
+
+  /** Re-read the user (e.g. an admin may have assigned a consultant since login). */
+  async function refreshMe() {
+    const me = await http.get<UserDto>('/auth/me');
+    user.value = me;
+    sessionStorage.setItem(USER_KEY, JSON.stringify(me));
+    return me;
+  }
+
+  function startSession(res: LoginResponse) {
     tokenStore.set(res.accessToken);
     sessionStorage.setItem(USER_KEY, JSON.stringify(res.user));
     token.value = res.accessToken;
@@ -37,7 +54,7 @@ export const useAuth = defineStore('auth', () => {
     if (token.value) connectSocket(token.value);
   }
 
-  return { user, token, isLoggedIn, isClient, isConsultant, homeRoute, login, logout, resume };
+  return { user, token, isLoggedIn, isClient, isConsultant, isAdmin, homeRoute, login, signup, refreshMe, logout, resume };
 });
 
 function readUser(): UserDto | null {

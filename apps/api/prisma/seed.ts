@@ -1,6 +1,7 @@
 /**
  * Idempotent seed: safe to run any number of times.
- *   consultant@demo.com  (Sam Consultant)  -> client1, client2, client3
+ *   admin@demo.com       (Admin)           manages consultants + client assignments only
+ *   consultant@demo.com  (Sam Consultant)  -> client1, client2, client3  (default consultant for new signups)
  *   consultant2@demo.com (Riya Consultant) -> client4  (only used to prove data isolation)
  * Password for everyone: Demo1234!
  */
@@ -11,6 +12,7 @@ import * as bcrypt from 'bcryptjs';
 export const DEMO_PASSWORD = 'Demo1234!';
 
 export const DEMO_USERS = [
+  { email: 'admin@demo.com', name: 'Admin', role: Role.ADMIN, consultant: null },
   { email: 'consultant@demo.com', name: 'Sam Consultant', role: Role.CONSULTANT, consultant: null },
   { email: 'consultant2@demo.com', name: 'Riya Consultant', role: Role.CONSULTANT, consultant: null },
   { email: 'client1@demo.com', name: 'Alice Client', role: Role.CLIENT, consultant: 'consultant@demo.com' },
@@ -33,6 +35,9 @@ export async function seed(prisma: PrismaClient) {
     });
     ids[u.email] = user.id;
   }
+  // New client signups go to the default consultant. Only set it if the admin hasn't chosen one.
+  const hasDefault = await prisma.user.count({ where: { role: Role.CONSULTANT, isDefaultConsultant: true } });
+  if (!hasDefault) await prisma.user.update({ where: { email: 'consultant@demo.com' }, data: { isDefaultConsultant: true } });
   return ids;
 }
 

@@ -5,7 +5,6 @@ import type {
   RecordingSummaryDto,
   SummaryDto,
   TranscriptSegmentDto,
-  UserDto,
 } from '@chp/shared';
 
 /** Prisma includes that the mappers below expect. Keep them next to the mappers. */
@@ -24,10 +23,6 @@ export const callInclude = {
 
 type RequestRow = Prisma.HelpRequestGetPayload<{ include: typeof requestInclude }>;
 type CallRow = Prisma.CallGetPayload<{ include: typeof callInclude }>;
-
-export function toUserDto(u: { id: string; email: string; name: string; role: UserDto['role'] }): UserDto {
-  return { id: u.id, email: u.email, name: u.name, role: u.role };
-}
 
 export function toRequestDto(r: RequestRow): HelpRequestDto {
   return {

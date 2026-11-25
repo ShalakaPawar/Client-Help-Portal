@@ -1,5 +1,5 @@
 -- CreateEnum
-CREATE TYPE "Role" AS ENUM ('CONSULTANT', 'CLIENT');
+CREATE TYPE "Role" AS ENUM ('CONSULTANT', 'CLIENT', 'ADMIN');
 
 -- CreateEnum
 CREATE TYPE "RequestStatus" AS ENUM ('OPEN', 'IN_CALL', 'RESOLVED', 'CANCELLED');
@@ -32,6 +32,7 @@ CREATE TABLE "User" (
     "name" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
     "role" "Role" NOT NULL,
+    "isDefaultConsultant" BOOLEAN NOT NULL DEFAULT false,
     "consultantId" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
@@ -131,6 +132,9 @@ CREATE TABLE "Summary" (
     "actionItems" JSONB NOT NULL,
     "outcome" "Outcome" NOT NULL,
     "model" TEXT NOT NULL,
+    "inputTokens" INTEGER,
+    "outputTokens" INTEGER,
+    "latencyMs" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "Summary_pkey" PRIMARY KEY ("recordingId")
@@ -202,3 +206,5 @@ ALTER TABLE "Summary" ADD CONSTRAINT "Summary_recordingId_fkey" FOREIGN KEY ("re
 CREATE UNIQUE INDEX "Call_one_live_call_per_consultant" ON "Call"("consultantId") WHERE "status" IN ('WAITING', 'ACTIVE');
 -- A request can have only one live call:
 CREATE UNIQUE INDEX "Call_one_live_call_per_request" ON "Call"("requestId") WHERE "status" IN ('WAITING', 'ACTIVE');
+-- At most one default consultant (new clients are assigned to them on signup):
+CREATE UNIQUE INDEX "User_one_default_consultant" ON "User"("isDefaultConsultant") WHERE "isDefaultConsultant" = true;

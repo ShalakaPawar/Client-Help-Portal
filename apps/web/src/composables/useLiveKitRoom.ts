@@ -122,7 +122,8 @@ export function useLiveKitRoom() {
     room = null;
     state.value = 'idle';
     cleanupMedia();
-    if (r) await r.disconnect();
+    // Never wait long: if the server already closed the room, disconnect() can hang on unpublishing tracks.
+    if (r) await Promise.race([r.disconnect().catch(() => undefined), new Promise((resolve) => setTimeout(resolve, 2000))]);
   }
 
   function cleanupMedia() {

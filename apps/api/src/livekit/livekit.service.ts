@@ -181,10 +181,13 @@ const isRecorderIdentity = (identity: string) => identity.startsWith('EG_');
 const nsToDate = (ns: bigint | number | undefined) => (ns && BigInt(ns) > 0n ? new Date(Number(BigInt(ns) / 1_000_000n)) : null);
 
 function toSnapshot(info: EgressInfo): EgressSnapshot {
+  // The output results carry when media really started (the composite's headless Chrome takes seconds to start).
+  const resultStart = info.segmentResults?.[0]?.startedAt ?? info.fileResults?.[0]?.startedAt;
   return {
     egressId: info.egressId,
     state: STATE[info.status] ?? 'starting',
     startedAt: nsToDate(info.startedAt),
+    mediaStartedAt: nsToDate(resultStart),
     endedAt: nsToDate(info.endedAt),
     error: info.error || null,
   };

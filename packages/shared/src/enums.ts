@@ -1,6 +1,6 @@
 // String enums shared by API and web. Values match the Prisma enums exactly.
 
-export const Role = { CONSULTANT: 'CONSULTANT', CLIENT: 'CLIENT' } as const;
+export const Role = { CONSULTANT: 'CONSULTANT', CLIENT: 'CLIENT', ADMIN: 'ADMIN' } as const;
 export type Role = (typeof Role)[keyof typeof Role];
 
 export const RequestStatus = {
@@ -54,6 +54,7 @@ export type Outcome = (typeof Outcome)[keyof typeof Outcome];
 export const ErrorCode = {
   VALIDATION_FAILED: 'VALIDATION_FAILED',
   INVALID_CREDENTIALS: 'INVALID_CREDENTIALS',
+  EMAIL_IN_USE: 'EMAIL_IN_USE',
   UNAUTHENTICATED: 'UNAUTHENTICATED',
   INVALID_WEBHOOK_SIGNATURE: 'INVALID_WEBHOOK_SIGNATURE',
   FORBIDDEN_ROLE: 'FORBIDDEN_ROLE',

@@ -36,7 +36,13 @@ const processingText = computed(() => {
   if (r.processingStatus === 'PENDING') return 'Waiting to process…';
   return null;
 });
-const failed = computed(() => recording.value && (recording.value.processingStatus === 'FAILED' || recording.value.status === 'FAILED'));
+/** The recorder never started (e.g. all recorders busy): nothing was recorded, so there is nothing to retry. */
+const neverRecorded = computed(
+  () => recording.value?.status === 'FAILED' && recording.value.processingStatus === 'PENDING' && !recording.value.durationMs,
+);
+const failed = computed(
+  () => !neverRecorded.value && recording.value && (recording.value.processingStatus === 'FAILED' || recording.value.status === 'FAILED'),
+);
 
 async function load() {
   try {
@@ -143,6 +149,9 @@ onBeforeUnmount(() => offs.forEach((off) => off()));
         <span v-if="recording?.status !== 'NONE'" class="h-4 w-4 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent"></span>
         {{ processingText }}
       </div>
+      <div v-if="neverRecorded" class="card p-4 text-sm text-slate-600">
+        This call was not recorded: {{ recording?.lastError ?? 'the recorder could not start.' }}
+      </div>
       <div v-if="failed" class="card flex items-center gap-3 border-rose-200 bg-rose-50 p-4 text-sm text-rose-800">
         <span class="flex-1">Processing failed: {{ recording?.lastError ?? 'unknown error' }}</span>
         <button class="btn-secondary" :disabled="retrying" @click="retry">{{ retrying ? 'Retrying…' : 'Retry' }}</button>
@@ -162,7 +171,7 @@ onBeforeUnmount(() => offs.forEach((off) => off()));
               @error="onVideoError"
             ></video>
             <div v-else class="flex aspect-video items-center justify-center text-sm text-slate-400">
-              {{ recording?.status === 'NONE' ? 'No recording' : 'The video will appear here when it is ready.' }}
+              {{ recording?.status === 'NONE' || neverRecorded ? 'No recording' : 'The video will appear here when it is ready.' }}
             </div>
           </div>
 
@@ -174,6 +183,11 @@ onBeforeUnmount(() => offs.forEach((off) => off()));
                 :label="detail.summary.outcome.toLowerCase()"
               />
             </div>
+            <h3 class="text-sm font-medium">Participants</h3>
+            <ul class="mt-1 mb-4 flex flex-wrap gap-2 text-sm">
+              <li class="rounded-full bg-emerald-50 px-3 py-1 text-emerald-800">{{ detail.call.client.name }} · Client</li>
+              <li class="rounded-full bg-indigo-50 px-3 py-1 text-indigo-800">{{ detail.call.consultant.name }} · Consultant</li>
+            </ul>
             <p class="text-sm text-slate-700">{{ detail.summary.overview }}</p>
             <template v-if="detail.summary.issuesDiscussed.length">
               <h3 class="mt-4 text-sm font-medium">Issues discussed</h3>
@@ -196,16 +210,24 @@ onBeforeUnmount(() => offs.forEach((off) => off()));
           </section>
         </div>
 
-        <section class="card p-4 lg:col-span-2">
-          <h2 class="mb-2 text-lg font-semibold">Transcript</h2>
-          <p v-if="!detail.transcript" class="text-sm text-slate-500">
-            {{ recording?.status === 'NONE' ? 'No transcript (not recorded).' : 'The transcript will appear here.' }}
-          </p>
-          <p v-else-if="!segments.length" class="text-sm text-slate-500">No speech was detected.</p>
-          <template v-else>
-            <p class="mb-2 text-xs text-slate-400">Click a line to jump to that moment.</p>
-            <TranscriptList :segments="segments" :active-index="activeIndex" :seekable="!!videoUrl" @seek="seek" />
-          </template>
+        <!-- Same height as the video + summary column on wide screens; the lines scroll inside. -->
+        <section class="card relative h-[28rem] lg:col-span-2 lg:h-auto lg:min-h-[24rem]">
+          <div class="absolute inset-0 flex flex-col p-4">
+            <div class="mb-2 flex items-baseline gap-2">
+              <h2 class="text-lg font-semibold">Transcript</h2>
+              <span v-if="segments.length" class="text-xs text-slate-400">{{ segments.length }} lines</span>
+            </div>
+            <p v-if="!detail.transcript" class="text-sm text-slate-500">
+              {{ recording?.status === 'NONE' || neverRecorded ? 'No transcript (not recorded).' : 'The transcript will appear here.' }}
+            </p>
+            <p v-else-if="!segments.length" class="text-sm text-slate-500">No speech was detected.</p>
+            <template v-else>
+              <p class="mb-2 text-xs text-slate-400">Click a line to jump to that moment.</p>
+              <div class="min-h-0 flex-1">
+                <TranscriptList :segments="segments" :active-index="activeIndex" :seekable="!!videoUrl" @seek="seek" />
+              </div>
+            </template>
+          </div>
         </section>
       </div>
     </template>

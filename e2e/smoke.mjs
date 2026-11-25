@@ -9,11 +9,20 @@
  * Prereqs: Docker services up (`npm run setup`) and `npm run dev` running.
  * Usage:   npm run e2e:smoke   (HEADED=1 to watch it)
  *          SPEECH=1 npm run e2e:smoke   (macOS: each person "speaks" a scripted support dialog
- *          generated with `say`, so Deepgram and Claude get real speech)
+ *          generated with `say`, so Deepgram and Claude get real speech; also checks that transcript
+ *          times match the video)
+ *          ENDED_BY=client npm run e2e:smoke   (the client ends the call instead of the consultant)
+ *          KEEP=1 npm run e2e:smoke   (keep the test accounts + call afterwards to look at them in the UI)
+ *
+ * It uses its own temporary consultant + client, so nothing appears in the demo accounts' dashboards,
+ * and deletes them (and the call + recording) at the end. Don't run it while recording a demo: it
+ * uses the machine's only recorder for its call.
  */
 import { chromium } from 'playwright-core';
 import { execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, readdirSync, statSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -26,6 +35,10 @@ const CHROME =
   (process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : '/usr/bin/google-chrome');
 const SHARED_TAB_TITLE = 'Shared Demo Screen';
 const RECORD_SECONDS = Number(process.env.RECORD_SECONDS ?? 15);
+const ENDED_BY = process.env.ENDED_BY === 'client' ? 'client' : 'consultant';
+const { createTempPair, prisma } = await import('./temp-accounts.mjs');
+const pair = await createTempPair('smoke');
+const PASSWORD = pair.password;
 
 mkdirSync(OUT, { recursive: true });
 const step = (msg) => console.log(`\x1b[36m▸\x1b[0m ${msg}`);
@@ -76,13 +89,10 @@ await demoTab.setContent(
 const shot = (page, name) => page.screenshot({ path: join(OUT, `${name}.png`) });
 
 try {
-  await endLeftoverCall();
-  step('Log in: Sam Consultant (window A) and Alice Client (window B)');
-  await consultant.goto(`${BASE}/login`);
-  await consultant.getByRole('button', { name: /Sam Consultant/ }).click();
+  step('Log in: temporary consultant (window A) and temporary client (window B)');
+  await loginPage(consultant, pair.consultant.email);
   await consultant.waitForURL('**/consultant');
-  await client.goto(`${BASE}/login`);
-  await client.getByRole('button', { name: /Alice Client/ }).click();
+  await loginPage(client, pair.client.email);
   await client.waitForURL('**/client');
   ok('both logged in, each in their own session');
 
@@ -135,9 +145,15 @@ try {
     segs.length ? ok(`composite video segments written DURING the call: ${segs.length}`) : fail('no composite segments after 20 s');
   }
 
-  step('Consultant ends the call and marks it resolved');
-  await consultant.getByRole('button', { name: 'End call' }).click();
-  await consultant.getByRole('button', { name: 'Yes, mark resolved' }).click();
+  if (ENDED_BY === 'client') {
+    step('Client ends the call (in-app dialog); both windows must leave the call page');
+    await client.getByRole('button', { name: 'End call' }).first().click();
+    await client.getByRole('dialog').getByRole('button', { name: 'End call' }).click();
+  } else {
+    step('Consultant ends the call and marks it resolved');
+    await consultant.getByRole('button', { name: 'End call' }).first().click();
+    await consultant.getByRole('dialog').getByRole('button', { name: /mark resolved/ }).click();
+  }
   await consultant.waitForURL('**/history/**', { timeout: 15_000 });
   await client.waitForURL('**/history/**', { timeout: 15_000 });
   ok('both moved to the call history page');
@@ -173,6 +189,7 @@ try {
 
   if (recDir && existsSync(join(recDir, 'final', 'composite.mp4'))) {
     ok(`final video: ${Math.round(statSync(join(recDir, 'final', 'composite.mp4')).size / 1024)} KB`);
+    if (SPEECH && result === 'done') await checkAlignment(recDir);
   }
 } catch (err) {
   fail(err.message.split('\n')[0]);
@@ -182,6 +199,13 @@ try {
   if (errors.length) console.log(`  page errors:\n   ${errors.join('\n   ')}`);
   console.log(`\nScreenshots: ${OUT}`);
   await Promise.all([consultantBrowser.close(), clientBrowser.close()]);
+  if (process.env.KEEP) {
+    console.log(`Kept the test call. Log in as ${pair.consultant.email} / ${PASSWORD} to see it.`);
+  } else {
+    const n = await pair.cleanup().catch((e) => console.error(`clean-up failed: ${e.message}`));
+    if (n) console.log(`Cleaned up the temporary accounts, ${n.calls} call(s) and ${n.recordings} recording(s).`);
+  }
+  await prisma.$disconnect();
 }
 
 /** macOS only: two voices read a short support conversation; pauses leave room for the other person. */
@@ -219,19 +243,35 @@ function makeSpeech() {
   return out;
 }
 
-/** A previous interrupted run can leave the consultant in a live call ("busy"); end it first. */
-async function endLeftoverCall() {
-  const login = await fetch(`${BASE}/api/auth/login`, {
+async function loginPage(page, email) {
+  await page.goto(`${BASE}/login`);
+  await page.fill('#email', email);
+  await page.fill('#password', PASSWORD);
+  await page.getByRole('button', { name: 'Log in' }).click();
+}
+
+/**
+ * Transcript ↔ video alignment: transcribe the final video's own (mixed) audio with Deepgram and
+ * compare when the same sentence starts there and in our merged transcript. They should match.
+ */
+async function checkAlignment(recDir) {
+  const require = createRequire(join(root, 'apps/api/package.json'));
+  const env = require('dotenv').parse(readFileSync(join(root, 'apps/api/.env')));
+  if (!env.DEEPGRAM_API_KEY) return console.log('  (alignment check skipped: no DEEPGRAM_API_KEY)');
+  const res = await fetch('https://api.deepgram.com/v1/listen?model=nova-3&language=en&utterances=true&smart_format=true', {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email: 'consultant@demo.com', password: 'Demo1234!' }),
+    headers: { Authorization: `Token ${env.DEEPGRAM_API_KEY}`, 'Content-Type': 'video/mp4' },
+    body: readFileSync(join(recDir, 'final', 'composite.mp4')),
   }).then((r) => r.json());
-  const headers = { authorization: `Bearer ${login.accessToken}`, 'content-type': 'application/json' };
-  const { call } = await fetch(`${BASE}/api/calls/active`, { headers }).then((r) => r.json());
-  if (call) {
-    await fetch(`${BASE}/api/calls/${call.id}/end`, { method: 'POST', headers, body: '{}' });
-    console.log(`  (ended a leftover call from an earlier run)`);
-  }
+  const phrase = /monthly report/i;
+  const inVideo = (res.results?.utterances ?? []).find((u) => phrase.test(u.transcript));
+  const lines = await consultant.locator('ol li').allInnerTexts();
+  const line = lines.find((l) => phrase.test(l));
+  if (!inVideo || !line) return console.log('  (alignment check skipped: phrase not found in both)');
+  const [m, sec] = line.trim().split(/\s+/)[0].split(':').map(Number);
+  const diff = m * 60 + sec - inVideo.start;
+  const msg = `transcript vs video for "monthly report": ${(m * 60 + sec).toFixed(0)} s vs ${inVideo.start.toFixed(1)} s (diff ${diff.toFixed(1)} s)`;
+  Math.abs(diff) <= 2 ? ok(msg) : fail(msg);
 }
 
 function newestDir(dir) {

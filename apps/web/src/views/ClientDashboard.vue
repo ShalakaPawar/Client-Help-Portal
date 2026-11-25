@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { useRequests } from '@/stores/requests';
+import { useAuth } from '@/stores/auth';
 import { useCallStore } from '@/stores/call';
 import { useToasts } from '@/stores/toasts';
 import { timeAgo } from '@/lib/format';
@@ -9,6 +10,9 @@ import StatusBadge from '@/components/StatusBadge.vue';
 import IncomingCallBanner from '@/components/IncomingCallBanner.vue';
 
 const requests = useRequests();
+const auth = useAuth();
+/** New clients get the default consultant; an admin can change it. null = waiting for an admin. */
+const consultant = computed(() => auth.user?.consultant ?? null);
 const calls = useCallStore();
 const toasts = useToasts();
 const router = useRouter();
@@ -19,7 +23,7 @@ const submitting = ref(false);
 
 onMounted(async () => {
   try {
-    await Promise.all([requests.load(), calls.fetchActive()]);
+    await Promise.all([requests.load(), calls.fetchActive(), auth.refreshMe()]);
   } catch (err) {
     toasts.error(err);
   }
@@ -52,6 +56,19 @@ async function cancel(id: string) {
   <div class="mx-auto max-w-6xl space-y-6 px-4 py-6">
     <IncomingCallBanner v-if="calls.active" :call="calls.active" @join="router.push(`/call/${calls.active!.id}`)" />
 
+    <div v-if="consultant" class="card flex items-center gap-3 p-4 text-sm">
+      <span class="flex h-8 w-8 items-center justify-center rounded-full bg-indigo-100 font-semibold text-indigo-700">
+        {{ consultant.name.charAt(0) }}
+      </span>
+      <p class="flex-1 text-slate-700">
+        Your consultant is <b>{{ consultant.name }}</b>.
+        <span class="text-slate-400">This is your currently assigned consultant; an admin can change it.</span>
+      </p>
+    </div>
+    <div v-else class="card border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+      Please wait until a consultant is assigned to you. You can raise requests once that's done.
+    </div>
+
     <div class="grid gap-6 md:grid-cols-5">
       <form class="card space-y-4 p-5 md:col-span-2" @submit.prevent="submit">
         <h2 class="text-lg font-semibold">Ask for help</h2>
@@ -63,7 +80,7 @@ async function cancel(id: string) {
           <label class="label" for="desc">Details</label>
           <textarea id="desc" v-model="description" class="input min-h-28" maxlength="2000" required placeholder="What did you try? What happens?" />
         </div>
-        <button class="btn-primary w-full" :disabled="submitting">{{ submitting ? 'Sending…' : 'Raise request' }}</button>
+        <button class="btn-primary w-full" :disabled="submitting || !consultant">{{ submitting ? 'Sending…' : 'Raise request' }}</button>
       </form>
 
       <section class="card p-5 md:col-span-3">

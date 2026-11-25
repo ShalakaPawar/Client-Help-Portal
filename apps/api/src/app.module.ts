@@ -18,6 +18,7 @@ import { RequestsModule } from './requests/requests.module';
 import { CallsModule } from './calls/calls.module';
 import { RecordingsModule } from './recordings/recordings.module';
 import { HistoryModule } from './history/history.module';
+import { AdminModule } from './admin/admin.module';
 import { HealthController } from './health/health.controller';
 import { loggerParams } from './logging';
 
@@ -48,6 +49,7 @@ import { loggerParams } from './logging';
     CallsModule,
     RecordingsModule,
     HistoryModule,
+    AdminModule,
     // No ProcessingModule here: recordings are processed by the separate worker process (src/worker.ts).
   ],
   controllers: [HealthController],

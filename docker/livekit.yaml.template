@@ -19,7 +19,7 @@ keys:
 webhook:
   api_key: __LIVEKIT_API_KEY__
   urls:
-    - http://host.docker.internal:3000/api/livekit/webhook
+    - http://host.docker.internal:4610/api/livekit/webhook
 room:
   empty_timeout: 300
 logging:

@@ -14,6 +14,8 @@ datasource db {
 enum Role {
   CONSULTANT
   CLIENT
+  /// Manages consultants and client assignments only (no access to requests, calls or history).
+  ADMIN
 }
 
 enum RequestStatus {
@@ -80,6 +82,8 @@ model User {
   name         String
   passwordHash String
   role         Role
+  /// For consultants: new clients are assigned to the default consultant on signup (at most one).
+  isDefaultConsultant Boolean @default(false)
   /// For clients: the consultant they are assigned to.
   consultantId String?
   consultant   User?    @relation("Assignment", fields: [consultantId], references: [id])

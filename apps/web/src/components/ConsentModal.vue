@@ -12,8 +12,6 @@ const emit = defineEmits<{ answer: [granted: boolean] }>();
       </p>
       <ul class="mt-3 list-disc space-y-1 pl-5 text-sm text-slate-600">
         <li>Your shared screen and both voices are recorded.</li>
-        <li>The audio is sent to Deepgram (speech-to-text) and Claude (summary).</li>
-        <li>You can stop the recording at any time during the call.</li>
         <li>If you say no, the call continues without recording.</li>
       </ul>
       <div class="mt-6 flex justify-end gap-3">

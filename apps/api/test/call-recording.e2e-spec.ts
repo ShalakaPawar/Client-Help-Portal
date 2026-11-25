@@ -155,7 +155,7 @@ describe('Calls and recording', () => {
     const start = new Date('2026-01-01T10:00:00Z');
 
     for (const e of egresses) {
-      await webhooks.handle(event({ event: 'egress_started', egress: { egressId: e.egressId, state: 'active', startedAt: start, endedAt: null, error: null } }));
+      await webhooks.handle(event({ event: 'egress_started', egress: { egressId: e.egressId, state: 'active', mediaStartedAt: null, startedAt: start, endedAt: null, error: null } }));
     }
     expect((await prisma.recording.findFirstOrThrow()).status).toBe('RECORDING');
 
@@ -164,7 +164,7 @@ describe('Calls and recording', () => {
     expect((await prisma.recording.findFirstOrThrow()).status).toBe('STOPPING');
 
     const ended = (egressId: string) =>
-      event({ event: 'egress_ended', egress: { egressId, state: 'complete', startedAt: start, endedAt: new Date(), error: null } });
+      event({ event: 'egress_ended', egress: { egressId, state: 'complete', mediaStartedAt: null, startedAt: start, endedAt: new Date(), error: null } });
     await webhooks.handle(ended(egresses[0].egressId));
     expect(queue.enqueueProcessing).not.toHaveBeenCalled(); // still waiting for the other recorder
 
@@ -177,14 +177,29 @@ describe('Calls and recording', () => {
     expect(queue.enqueueProcessing).toHaveBeenCalledTimes(1);
   });
 
+  it('video time zero = when the composite media really started, not when it was requested (transcript alignment)', async () => {
+    const callId = await activeCall();
+    livekit.participants = [{ identity: ids['client1@demo.com'], isRecorder: false, micTrackSids: ['TR_mic'] }];
+    await http().post(`/api/calls/${callId}/consent`).set(auth(t.client1)).send({ granted: true }).expect(200);
+    const composite = (await prisma.recordingEgress.findMany({ where: { kind: 'COMPOSITE' } }))[0];
+    const requested = new Date('2026-01-01T10:00:00.000Z');
+    const mediaStarted = new Date('2026-01-01T10:00:09.500Z'); // headless Chrome took 9.5 s to start
+
+    await webhooks.handle(event({ event: 'egress_started', egress: { egressId: composite.egressId, state: 'active', startedAt: requested, mediaStartedAt: null, endedAt: null, error: null } }));
+    expect((await prisma.recording.findFirstOrThrow()).compositeStartedAt?.toISOString()).toBe(requested.toISOString());
+
+    await webhooks.handle(event({ event: 'egress_ended', egress: { egressId: composite.egressId, state: 'complete', startedAt: requested, mediaStartedAt: mediaStarted, endedAt: new Date(), error: null } }));
+    expect((await prisma.recording.findFirstOrThrow()).compositeStartedAt?.toISOString()).toBe(mediaStarted.toISOString());
+  });
+
   it('a failed recorder marks the recording partial but processing still runs', async () => {
     const callId = await activeCall();
     livekit.participants = [{ identity: ids['client1@demo.com'], isRecorder: false, micTrackSids: ['TR_mic'] }];
     await http().post(`/api/calls/${callId}/consent`).set(auth(t.client1)).send({ granted: true }).expect(200);
     const [composite, voice] = await prisma.recordingEgress.findMany({ orderBy: { createdAt: 'asc' } });
-    await webhooks.handle(event({ event: 'egress_ended', egress: { egressId: voice.egressId, state: 'failed', startedAt: null, endedAt: new Date(), error: 'boom' } }));
+    await webhooks.handle(event({ event: 'egress_ended', egress: { egressId: voice.egressId, state: 'failed', mediaStartedAt: null, startedAt: null, endedAt: new Date(), error: 'boom' } }));
     await http().post(`/api/calls/${callId}/end`).set(auth(t.consultant)).send({}).expect(200);
-    await webhooks.handle(event({ event: 'egress_ended', egress: { egressId: composite.egressId, state: 'complete', startedAt: new Date(), endedAt: new Date(), error: null } }));
+    await webhooks.handle(event({ event: 'egress_ended', egress: { egressId: composite.egressId, state: 'complete', mediaStartedAt: null, startedAt: new Date(), endedAt: new Date(), error: null } }));
     const rec = await prisma.recording.findFirstOrThrow();
     expect(rec.partial).toBe(true);
     expect(rec.status).toBe('FINALIZING');
@@ -236,7 +251,7 @@ describe('Calls and recording', () => {
     const [composite, voice] = await prisma.recordingEgress.findMany({ orderBy: { createdAt: 'asc' } });
     // LiveKit reports the composite as complete; the voice recorder is unknown (no answer).
     livekit.getEgress.mockImplementation(async (id: string) =>
-      id === composite.egressId ? { egressId: id, state: 'complete', startedAt: new Date(), endedAt: new Date(), error: null } : null,
+      id === composite.egressId ? { egressId: id, state: 'complete', mediaStartedAt: null, startedAt: new Date(), endedAt: new Date(), error: null } : null,
     );
     const recording = await prisma.recording.findFirstOrThrow();
     await app.get(RecordingsService).checkEgress(recording.id);

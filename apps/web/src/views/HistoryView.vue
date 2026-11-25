@@ -36,6 +36,8 @@ function processingLabel(c: CallDto): { status: string; label: string } {
   const r = c.recording;
   if (c.status === 'MISSED') return { status: 'MISSED', label: 'missed' };
   if (!r || r.status === 'NONE') return { status: 'NONE', label: 'not recorded' };
+  // Recorder never started (e.g. all recorders busy): nothing to process.
+  if (r.status === 'FAILED' && r.processingStatus === 'PENDING' && !r.durationMs) return { status: 'NONE', label: 'not recorded' };
   if (r.processingStatus === 'DONE') return { status: 'DONE', label: 'ready' };
   if (r.processingStatus === 'FAILED' || r.status === 'FAILED') return { status: 'FAILED', label: 'failed' };
   return { status: r.processingStatus, label: 'processing…' };

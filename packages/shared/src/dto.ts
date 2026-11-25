@@ -23,6 +23,26 @@ export interface UserDto {
   email: string;
   name: string;
   role: Role;
+  /** Clients only: the consultant they are assigned to (null = waiting for an admin to assign one). */
+  consultant?: Pick<UserDto, 'id' | 'name'> | null;
+}
+
+/** Admin screen: a consultant and how many clients they have. */
+export interface AdminConsultantDto {
+  id: string;
+  name: string;
+  email: string;
+  isDefault: boolean;
+  clientCount: number;
+}
+
+/** Admin screen: a client and their assigned consultant. */
+export interface AdminClientDto {
+  id: string;
+  name: string;
+  email: string;
+  consultant: { id: string; name: string } | null;
+  createdAt: string;
 }
 
 export interface LoginResponse {

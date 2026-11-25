@@ -12,14 +12,21 @@ import type { AuthUser } from './auth.decorators';
 @Injectable()
 export class ScopeService {
   requestWhere(user: AuthUser): Prisma.HelpRequestWhereInput {
-    return user.role === Role.CLIENT ? { clientId: user.id } : { consultantId: user.id };
+    return this.byRole(user);
   }
 
   callWhere(user: AuthUser): Prisma.CallWhereInput {
-    return user.role === Role.CLIENT ? { clientId: user.id } : { consultantId: user.id };
+    return this.byRole(user);
   }
 
   recordingWhere(user: AuthUser): Prisma.RecordingWhereInput {
     return { call: this.callWhere(user) };
+  }
+
+  /** Clients see their own rows, consultants their clients' rows, admins none (they only manage accounts). */
+  private byRole(user: AuthUser): { clientId: string } | { consultantId: string } | { id: { in: string[] } } {
+    if (user.role === Role.CLIENT) return { clientId: user.id };
+    if (user.role === Role.CONSULTANT) return { consultantId: user.id };
+    return { id: { in: [] } }; // matches nothing
   }
 }

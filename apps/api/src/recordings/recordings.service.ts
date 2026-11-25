@@ -120,18 +120,21 @@ export class RecordingsService {
     const finished = isEgressFinished(snapshot.state);
     const failed = snapshot.state === 'failed' || snapshot.state === 'aborted' || snapshot.state === 'limit_reached';
 
+    // Timeline anchor: when media really started (falls back to the request time until LiveKit reports it).
+    const mediaStart = snapshot.mediaStartedAt ?? snapshot.startedAt;
     await this.prisma.recordingEgress.update({
       where: { id: row.id },
       data: {
         status: finished ? (failed ? 'FAILED' : 'ENDED') : 'ACTIVE',
-        startedAt: snapshot.startedAt ?? row.startedAt,
+        startedAt: snapshot.mediaStartedAt ?? row.startedAt ?? snapshot.startedAt,
         endedAt: snapshot.endedAt ?? (finished ? new Date() : row.endedAt),
         error: snapshot.error ?? row.error,
       },
     });
 
-    if (row.kind === 'COMPOSITE' && snapshot.startedAt && !recording.compositeStartedAt) {
-      await this.prisma.recording.update({ where: { id: recording.id }, data: { compositeStartedAt: snapshot.startedAt } });
+    // Video time zero. A precise media start (sent with egress_updated/ended) always replaces the request time.
+    if (row.kind === 'COMPOSITE' && mediaStart && (snapshot.mediaStartedAt || !recording.compositeStartedAt)) {
+      await this.prisma.recording.update({ where: { id: recording.id }, data: { compositeStartedAt: mediaStart } });
     }
     if (row.kind === 'COMPOSITE' && !finished && recording.status === RecordingStatus.STARTING) {
       await this.setStatus(recording.id, recording.call, RecordingStatus.RECORDING);

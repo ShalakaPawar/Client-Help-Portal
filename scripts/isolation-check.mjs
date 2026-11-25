@@ -9,6 +9,8 @@
  *   Phase 4  start a replacement worker: the interrupted job is picked up and finishes
  *
  * Needs `npm run dev` running. Usage: node scripts/isolation-check.mjs [--minutes 3] [--jobs 3]
+ * Uses its own temporary consultant + client (deleted at the end), so nothing appears in the demo
+ * accounts' dashboards. Don't run it while recording a demo: it keeps the worker busy for a minute.
  */
 import { execFileSync, execSync, spawn } from 'node:child_process';
 import { mkdirSync, utimesSync } from 'node:fs';
@@ -20,30 +22,27 @@ import { randomUUID } from 'node:crypto';
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = join(root, 'apps/api');
 const require = createRequire(join(apiDir, 'package.json'));
-require('dotenv').config({ path: join(apiDir, '.env') });
-const { PrismaClient } = require('@prisma/client');
 const { Queue } = require('bullmq');
+const { prisma, RECORDINGS, createTempPair } = await import('../e2e/temp-accounts.mjs');
 const ffmpeg = process.env.FFMPEG_PATH || require('ffmpeg-static');
 
-const API = 'http://localhost:3000/api';
+const API = 'http://localhost:4610/api';
 const arg = (name, def) => {
   const i = process.argv.indexOf(`--${name}`);
   return i > 0 ? Number(process.argv[i + 1]) : def;
 };
 const MINUTES = arg('minutes', 3);
 const JOBS = arg('jobs', 3);
-const RECORDINGS = join(apiDir, process.env.RECORDINGS_DIR || '../../data/recordings');
-const prisma = new PrismaClient();
 const queue = new Queue('processing', { connection: { url: process.env.REDIS_URL }, prefix: 'chp' });
 
 const log = (m) => console.log(`\x1b[36m▸\x1b[0m ${m}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
-async function login(email) {
+async function login(email, password) {
   const r = await fetch(`${API}/auth/login`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
-    body: JSON.stringify({ email, password: 'Demo1234!' }),
+    body: JSON.stringify({ email, password }),
   });
   return (await r.json()).accessToken;
 }
@@ -133,14 +132,12 @@ async function waitFor(fn, timeoutMs, what) {
 }
 
 const results = [];
+// Temporary accounts: everything they create is deleted at the end (requests, calls, recordings, files).
+const pair = await createTempPair('isolation');
 try {
   if (!(await health()).worker) throw new Error('No worker running. Start `npm run dev` first.');
-  const token = await login('client3@demo.com');
-  const users = await prisma.user.findMany({ where: { email: { in: ['client3@demo.com', 'consultant@demo.com'] } } });
-  const ids = {
-    client: users.find((u) => u.email === 'client3@demo.com').id,
-    consultant: users.find((u) => u.email === 'consultant@demo.com').id,
-  };
+  const token = await login(pair.client.email, pair.password);
+  const ids = { client: pair.client.id, consultant: pair.consultant.id };
 
   log('Phase 1: baseline (worker idle)');
   results.push(await measure('1. worker idle', token));
@@ -150,7 +147,7 @@ try {
   for (let i = 0; i < JOBS; i++) recs.push(await syntheticRecording(ids, MINUTES * 60));
 
   log('Phase 2: API latency while the worker processes them');
-  for (const r of recs) await queue.add('process-recording', { recordingId: r }, { jobId: `rec-${r}`, attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+  for (const r of recs) await queue.add('process-recording', { recordingId: r }, { jobId: `rec-${r}`, attempts: 3, backoff: { type: 'exponential', delay: 5000 }, removeOnComplete: true });
   await sleep(300);
   results.push(await measure('2. worker busy', token));
   await waitFor(async () => (await prisma.recording.count({ where: { id: { in: recs }, status: 'AVAILABLE' } })) === recs.length, 300_000, 'processing');
@@ -165,7 +162,7 @@ try {
   console.log(`  health.worker = ${(await health()).worker}`);
   // A call ends while no worker is running: its job must wait safely in the queue.
   const extra = await syntheticRecording(ids, 60);
-  await queue.add('process-recording', { recordingId: extra }, { jobId: `rec-${extra}`, attempts: 3 });
+  await queue.add('process-recording', { recordingId: extra }, { jobId: `rec-${extra}`, attempts: 3, removeOnComplete: true });
   results.push(await measure('3. worker dead', token));
   const waiting = await prisma.recording.findUnique({ where: { id: extra } });
   console.log(`  recording queued while the worker is dead: status=${waiting.status} (waits in the queue)`);
@@ -190,6 +187,10 @@ try {
   console.error(`✖ ${err.message}`);
   process.exitCode = 1;
 } finally {
+  await pair
+    .cleanup()
+    .then((n) => console.log(`\nCleaned up the temporary accounts, their requests, ${n.calls} calls and ${n.recordings} recordings.`))
+    .catch((e) => console.error(`  clean-up failed: ${e.message}`));
   await queue.close();
   await prisma.$disconnect();
 }

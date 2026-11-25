@@ -7,7 +7,10 @@ export type EgressState = 'starting' | 'active' | 'ending' | 'complete' | 'faile
 export interface EgressSnapshot {
   egressId: string;
   state: EgressState;
+  /** When LiveKit accepted the egress request (NOT when media started; the composite starts ~7-12 s later). */
   startedAt: Date | null;
+  /** When the output's media actually started (from the segments/file result). Use this for timelines. */
+  mediaStartedAt: Date | null;
   endedAt: Date | null;
   error: string | null;
 }

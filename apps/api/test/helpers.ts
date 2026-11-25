@@ -13,7 +13,7 @@ import type { EgressSnapshot, ParticipantSnapshot } from '../src/livekit/livekit
 /** LiveKit test double: records calls, never touches the network. */
 export function createLiveKitMock() {
   let n = 0;
-  const snapshot = (egressId: string): EgressSnapshot => ({ egressId, state: 'starting', startedAt: null, endedAt: null, error: null });
+  const snapshot = (egressId: string): EgressSnapshot => ({ egressId, state: 'starting', mediaStartedAt: null, startedAt: null, endedAt: null, error: null });
   return {
     publicUrl: 'ws://livekit.test',
     participants: [] as ParticipantSnapshot[],

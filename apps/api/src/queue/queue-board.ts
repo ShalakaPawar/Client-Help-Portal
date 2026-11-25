@@ -6,7 +6,7 @@ import type { INestApplication } from '@nestjs/common';
 import type { Queue } from 'bullmq';
 import { PROCESSING_QUEUE, TIMERS_QUEUE } from './queues';
 
-/** Dev-only dashboard to watch jobs: http://localhost:3000/api/admin/queues */
+/** Dev-only dashboard to watch jobs: http://localhost:4610/api/admin/queues */
 export function setupQueueBoard(app: INestApplication) {
   const adapter = new ExpressAdapter();
   adapter.setBasePath('/api/admin/queues');

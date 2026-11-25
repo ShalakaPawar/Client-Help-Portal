@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import type { CallDto, LiveKitJoinDto } from '@chp/shared';
-import { http } from '@/services/http';
+import { ApiError, http } from '@/services/http';
 import { onSocket } from '@/services/socket';
 import { useAuth } from '@/stores/auth';
 import { useCallStore } from '@/stores/call';
@@ -55,20 +55,37 @@ onMounted(async () => {
     callStore.apply(info.call);
     await lk.connect(info.livekitUrl, info.token);
   } catch (err) {
+    // The call already ended (e.g. refresh after the other person hung up): go to its history instead.
+    if (err instanceof ApiError && err.code === 'INVALID_STATE') {
+      const ended = await http.get<CallDto>(`/calls/${callId}`).catch(() => null);
+      return finishCall(ended, 'This call has already ended.');
+    }
     loadError.value = (err as Error).message;
   }
 });
+
+let finishing = false;
+/**
+ * Leave the call page exactly once, whoever ended the call. Navigation happens first; the
+ * LiveKit disconnect runs in the background so a slow disconnect can never strand the page.
+ */
+async function finishCall(c: CallDto | null, message: string) {
+  if (finishing) return;
+  finishing = true;
+  if (c) callStore.apply(c);
+  void lk.leave();
+  toasts.info(message);
+  await router.push(c && c.status === 'ENDED' ? `/history/${callId}` : auth.homeRoute);
+}
 
 const unsubscribers = [
   onSocket('call:updated', (c) => {
     if (c.id === callId) call.value = c;
   }),
-  onSocket('call:ended', async (c) => {
+  onSocket('call:ended', (c) => {
     if (c.id !== callId) return;
     call.value = c;
-    await lk.leave();
-    toasts.info(c.status === 'MISSED' ? 'The call was not answered.' : 'The call has ended.');
-    await router.push(c.status === 'ENDED' ? `/history/${callId}` : auth.homeRoute);
+    void finishCall(c, c.status === 'MISSED' ? 'The call was not answered.' : 'The call has ended.');
   }),
   onSocket('recording:status', (p) => {
     if (p.callId === callId && call.value) {
@@ -116,18 +133,14 @@ async function endCall(resolved?: boolean) {
   busy.value = true;
   showEndDialog.value = false;
   try {
-    await http.post(`/calls/${callId}/end`, resolved === undefined ? {} : { resolved });
-    // The call:ended event navigates away.
+    const ended = await http.post<CallDto>(`/calls/${callId}/end`, resolved === undefined ? {} : { resolved });
+    // Don't rely only on the call:ended push: navigate as soon as the server confirms.
+    await finishCall(ended, 'The call has ended.');
   } catch (err) {
     toasts.error(err);
   } finally {
     busy.value = false;
   }
-}
-
-function onEndClick() {
-  if (auth.isConsultant) showEndDialog.value = true;
-  else if (confirm('End the call for both of you?')) void endCall();
 }
 </script>
 
@@ -205,23 +218,32 @@ function onEndClick() {
         </button>
         <button v-if="auth.isClient && lk.sharingScreen.value" class="btn-secondary" @click="lk.stopScreenShare()">Stop sharing</button>
         <button v-if="auth.isClient && recordingOn" class="btn-secondary" :disabled="busy" @click="stopRecording">Stop recording</button>
-        <button class="btn-danger" :disabled="busy" @click="onEndClick">End call</button>
+        <button class="btn-danger" :disabled="busy" @click="showEndDialog = true">End call</button>
       </div>
       <p class="text-center text-xs text-slate-400">Tip: use headphones so your speakers don't echo into the microphone.</p>
     </template>
 
     <ConsentModal v-if="needsConsent" :busy="busy" :consultant-name="call!.consultant.name" @answer="answerConsent" />
 
-    <!-- Consultant: end + resolve in one step -->
-    <div v-if="showEndDialog" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true">
+    <!-- End call (in-app dialog). The consultant also says whether the problem was solved. -->
+    <div v-if="showEndDialog" class="fixed inset-0 z-40 flex items-center justify-center bg-slate-900/50 p-4" role="dialog" aria-modal="true" @click.self="showEndDialog = false">
       <div class="card w-full max-w-sm p-6">
-        <h2 class="text-lg font-semibold">End the call</h2>
-        <p class="mt-2 text-sm text-slate-600">Was {{ call?.client.name }}'s problem solved?</p>
-        <div class="mt-5 flex flex-col gap-2">
-          <button class="btn-primary" @click="endCall(true)">Yes, mark resolved</button>
-          <button class="btn-secondary" @click="endCall(false)">No, keep the request open</button>
-          <button class="btn mt-1 text-slate-500" @click="showEndDialog = false">Cancel</button>
-        </div>
+        <h2 class="text-lg font-semibold">End the call?</h2>
+        <template v-if="auth.isConsultant">
+          <p class="mt-2 text-sm text-slate-600">This ends the call for both of you. Was {{ call?.client.name }}'s problem solved?</p>
+          <div class="mt-5 flex flex-col gap-2">
+            <button class="btn-primary" :disabled="busy" @click="endCall(true)">Yes, end and mark resolved</button>
+            <button class="btn-secondary" :disabled="busy" @click="endCall(false)">End, keep the request open</button>
+            <button class="btn mt-1 text-slate-500" @click="showEndDialog = false">Cancel</button>
+          </div>
+        </template>
+        <template v-else>
+          <p class="mt-2 text-sm text-slate-600">This ends the call for both of you.</p>
+          <div class="mt-5 flex justify-end gap-2">
+            <button class="btn-secondary" @click="showEndDialog = false">Cancel</button>
+            <button class="btn-danger" :disabled="busy" @click="endCall()">End call</button>
+          </div>
+        </template>
       </div>
     </div>
   </div>

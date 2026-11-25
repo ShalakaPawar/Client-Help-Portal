@@ -111,7 +111,7 @@ console.log(`
 \x1b[32m✔ Setup complete\x1b[0m
 
   App:          http://localhost:5173   (after \`npm run dev\`)
-  Queue board:  http://localhost:3000/api/admin/queues
+  Queue board:  http://localhost:4610/api/admin/queues
   Accounts:     consultant@demo.com, client1@demo.com, client2@demo.com, client3@demo.com
   Password:     Demo1234!
 ${missing.length ? `\n  ⚠ Add ${missing.join(' and ')} to apps/api/.env to enable transcripts and summaries.` : ''}
