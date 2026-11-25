@@ -24,7 +24,7 @@ const schema = z.object({
   LIVEKIT_API_KEY: z.string().min(1, 'run `npm run setup` to generate it'),
   LIVEKIT_API_SECRET: z.string().min(1, 'run `npm run setup` to generate it'),
   RECORDINGS_DIR: z.string().default('../../data/recordings'),
-  EGRESS_OUTPUT_DIR: z.string().default('/out'),
+  EGRESS_OUTPUT_DIR: z.string().default('/data/recordings'),
   DEEPGRAM_API_KEY: optionalString,
   ANTHROPIC_API_KEY: optionalString,
   CLAUDE_MODEL: z.string().default('claude-opus-5-5'),

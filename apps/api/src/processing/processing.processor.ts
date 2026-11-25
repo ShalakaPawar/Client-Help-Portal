@@ -93,7 +93,7 @@ export class ProcessingProcessor extends WorkerHost implements OnApplicationBoot
       // No video at all; voices may still produce a transcript.
       await this.prisma.recording.update({
         where: { id: recordingId },
-        data: { status: RecordingStatus.FAILED, partial: true, lastError: 'The video recording is missing' },
+        data: { status: RecordingStatus.FAILED, partial: true, lastError: missingVideoReason(rec.egresses) },
       });
       await this.emitCallUpdate(recordingId);
       return;
@@ -234,4 +234,14 @@ export class ProcessingProcessor extends WorkerHost implements OnApplicationBoot
 function earliest(dates: (Date | null)[]): Date | null {
   const valid = dates.filter((d): d is Date => !!d);
   return valid.length ? new Date(Math.min(...valid.map((d) => d.getTime()))) : null;
+}
+
+/** Why there is no video, in words that say what to do. Exported for tests. */
+export function missingVideoReason(egresses: { kind: string; error: string | null }[]): string {
+  const error = egresses.find((e) => e.kind === 'COMPOSITE' && e.error)?.error;
+  if (!error) return 'The video recording is missing';
+  if (/Local upload failed|no such file|permission denied/i.test(error)) {
+    return 'The recorder could not save files to data/recordings. Restart it (docker compose up -d egress) and record again.';
+  }
+  return `The recorder failed: ${error}`;
 }

@@ -2,7 +2,7 @@
 // Wipes all local data (database rows and recordings), then re-seeds the demo accounts.
 // Asks first; pass --yes to skip the question.
 import { execSync } from 'node:child_process';
-import { rmSync, mkdirSync } from 'node:fs';
+import { mkdirSync, readdirSync, rmSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -20,7 +20,10 @@ if (!process.argv.includes('--yes')) {
 }
 
 execSync('npx prisma migrate reset --force --skip-seed', { stdio: 'inherit', cwd: join(root, 'apps/api') });
-rmSync(join(root, 'data/recordings'), { recursive: true, force: true });
-mkdirSync(join(root, 'data/recordings'), { recursive: true });
+// Empty the folder but keep the folder itself: Egress has it mounted, and a deleted-and-recreated
+// folder would leave Egress writing into the old (deleted) one, so every recording would fail.
+const recordings = join(root, 'data/recordings');
+mkdirSync(recordings, { recursive: true });
+for (const entry of readdirSync(recordings)) rmSync(join(recordings, entry), { recursive: true, force: true });
 execSync('npm run db:seed -w apps/api', { stdio: 'inherit', cwd: root });
 console.log('\n✔ Local data reset. Demo accounts re-created.');

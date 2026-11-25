@@ -57,7 +57,9 @@ services:
       EGRESS_CONFIG_FILE: /etc/egress.yaml
     volumes:
       - ./docker/egress.yaml:/etc/egress.yaml:ro
-      - ./data/recordings:/out
+      # The parent folder, not data/recordings itself: if data/recordings is deleted and recreated,
+      # a direct mount would keep pointing at the deleted folder and every recording would fail.
+      - ./data:/data
     cap_add:
       - SYS_ADMIN
     shm_size: "1gb"

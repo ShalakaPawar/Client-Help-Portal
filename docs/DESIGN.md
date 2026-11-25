@@ -54,7 +54,7 @@ consultant, they see "wait until a consultant is assigned" and can't raise reque
 | 2 TRANSCRIBE Deepgram per voice file                   |          |  audio/ client-1.ogg,                |
 | 3 MERGE     offsets, speaker labels, echo              |          |         consultant-1.ogg             |
 | 4 SUMMARIZE Claude, JSON schema, usage saved           |          |  final/ composite.mp4                |
-| notifies browsers via Redis emitter                    |          | mounted in Egress as /out            |
+| notifies browsers via Redis emitter                    |          | mounted in Egress as /data           |
 | crash/restart: job waits in queue, resumes             |          +--------------------------------------+
 +--------------------------------------------------------+
                          |                              |                           |
