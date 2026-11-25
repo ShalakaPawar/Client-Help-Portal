@@ -152,6 +152,9 @@ function onEndClick() {
         <span v-if="recordingOn" class="flex items-center gap-2 rounded-full bg-rose-100 px-3 py-1 text-sm font-medium text-rose-700">
           <span class="h-2 w-2 animate-pulse rounded-full bg-rose-600"></span> Recording
         </span>
+        <span v-else-if="call?.recording?.status === 'FAILED'" class="rounded-full bg-rose-100 px-3 py-1 text-sm text-rose-700" title="The call continues without recording">
+          Recording failed
+        </span>
         <span v-else-if="call?.consent === 'DECLINED' || call?.consent === 'WITHDRAWN'" class="rounded-full bg-slate-100 px-3 py-1 text-sm text-slate-600">
           Not recorded
         </span>

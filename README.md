@@ -8,6 +8,16 @@ and a **summary** in their history.
 **Stack:** Vue 3 · NestJS · TypeScript · PostgreSQL (Prisma) · Redis (BullMQ) · self-hosted LiveKit + LiveKit Egress ·
 Deepgram (speech-to-text) · Claude (summary). Everything runs locally.
 
+## Deliverables
+| # | Deliverable | Where |
+|---|---|---|
+| 1 | Source code + README | this repo, this file |
+| 2 | Design document (architecture + key decisions) | [docs/DESIGN.md](docs/DESIGN.md) · one-page summary [docs/decisions.md](docs/decisions.md) |
+| 3 | Known limits (measured) | [docs/LIMITS.md](docs/LIMITS.md) |
+| 4 | Approximate costs (LLM) | [docs/COSTS.md](docs/COSTS.md) |
+| 6 | Video of the working system | recorded with [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
+| — | How AI was used and checked | [docs/AI_USAGE.md](docs/AI_USAGE.md) |
+
 ---
 
 ## Quick start
@@ -20,7 +30,7 @@ git clone <repo-url> && cd client-help-portal
 npm ci
 npm run setup      # safe to re-run: secrets, Docker services, migrations, demo accounts
 # add DEEPGRAM_API_KEY and ANTHROPIC_API_KEY to apps/api/.env  (optional, needed for transcript + summary)
-npm run dev        # http://localhost:5173
+npm run dev        # http://localhost:5173  (runs shared, api, worker, web)
 ```
 
 The first `npm run setup` downloads the LiveKit Egress image (large, several minutes).
@@ -64,7 +74,8 @@ Queue dashboard (dev): http://localhost:3000/api/admin/queues · Health: http://
                             └─ webhooks (joined/left, track, egress) ─────────  └──────────┬───────────┘
                                                                                           ▼
    Postgres (truth) · Redis (BullMQ jobs + timers) · data/recordings/ (shared folder) ◀──────┘
-   BullMQ job after the call: ffmpeg (HLS → seekable MP4) → Deepgram per voice file → merge → Claude summary
+   Separate WORKER process (src/worker.ts) after the call: ffmpeg (HLS → seekable MP4) → Deepgram per voice file
+   → merge → Claude summary. It has no HTTP server, so heavy or failing processing never blocks the API.
 ```
 
 | Channel | Carries |
@@ -73,7 +84,8 @@ Queue dashboard (dev): http://localhost:3000/api/admin/queues · Health: http://
 | WebSocket (Socket.IO) | Notifications only: `request:created`, `call:incoming`, `call:ended`, `recording:status`, `processing:updated` |
 | LiveKit (WebRTC) | Live screen + voices between the browsers (never through NestJS) |
 | LiveKit webhooks → NestJS | Presence, new microphone tracks, recorder started/ended |
-| BullMQ | Processing job and delayed timers (ring timeout, auto-end, 30-min cap, recorder safety check) |
+| BullMQ | Processing job (worker process) and delayed timers in the API (ring timeout, presence grace, auto-end, 30-min cap, recorder safety check) |
+| Redis pub/sub | Worker → API → browser notifications (Socket.IO Redis emitter/adapter) |
 
 ### Recording (3 outputs per call)
 | Output | Made by | Used for |
@@ -87,7 +99,7 @@ over each other. Each recorder's start time from LiveKit puts every line on the 
 
 ### Repository
 ```
-apps/api      NestJS: auth, requests, calls, livekit (tokens, webhooks), recordings (egress), processing, history
+apps/api      NestJS: main.ts = API (auth, requests, calls, livekit, recordings, history) · worker.ts = processing
 apps/web      Vue 3: dashboards, call room (livekit-client), history with player + transcript
 packages/shared   enums, response types and socket event types used by both
 docker/       LiveKit/Egress config templates (filled by setup)

@@ -32,12 +32,21 @@ The project was built with an AI coding assistant (Claude Code). The approach:
 | API watch mode stopped emitting after a production build | `npm run dev` failed: `dist/main` missing | Removed TypeScript `incremental` (Nest `deleteOutDir` + incremental cache skips emit); ignore `*.tsbuildinfo` |
 | Finished processing wiped the "video missing" error, so History showed "unknown error" | New test for a missing video | Errors are only cleared by an explicit Retry |
 | Plan vs code cross-check found gaps: no `room_finished` handling, no 60 s presence grace, no 25-min warning, no CSP, no resolve/reopen on History, three planned tests missing | Line-by-line review of the plan against the code | All added, with tests |
+| Shutting down closed Redis before Socket.IO unsubscribed ("Connection is closed") | New data-isolation tests (app.close) | A custom `RedisIoAdapter` that owns its Redis clients and closes them after the socket server |
+| Two copies of socket.io (Nest pins 4.8.3, we had 4.8.4) gave conflicting types | Type-check | Pinned the same exact version |
+| `npm run dev` used `concurrently -k`, so a dying worker took the API down too, defeating isolation in development | The isolation-check script's "kill the worker" phase | Removed `-k`; Ctrl+C still stops everything |
+| The isolation script's process pattern matched the worker's watcher, not the worker | Health still said `worker: true` after the "kill" | Match the worker binary path exactly (`apps/api/dist(-worker)?/worker`) |
+| A full recorder said "LiveKit is not reachable. Is Docker running?" | Capacity measurement with two recorded calls | New `RECORDER_UNAVAILABLE` error ("all recorders are busy; the call continues without recording") + "Recording failed" badge |
 | ESLint `no-undef` flagged browser globals in TypeScript files | Lint | Disabled for TS (the compiler already checks it), as typescript-eslint recommends |
 
 ## Real-media smoke test
 `npm run e2e:smoke` drives two Chrome sessions (fake mic + fake screen) through the real UI, LiveKit and Egress:
 login → instant request → call → consent → screen received by the consultant → composite segments written during the
 call → one voice file per person → end → history processing. It found the two recording bugs above.
+
+## Measurements behind the docs
+- `scripts/isolation-check.mjs`: API latency with the worker idle, busy and killed ([LIMITS.md](LIMITS.md)).
+- `SPEECH=1 npm run e2e:smoke`: real speech through the whole pipeline; Claude's token usage is stored per summary ([COSTS.md](COSTS.md)). On a looped test dialog, the summary said the transcript "repeats the same exchange several times" instead of inventing details: the untrusted-transcript prompt rules held.
 
 ## What was checked by hand
 - Real screen sharing, both microphones, the consent flow, recording files appearing during the call, playback and

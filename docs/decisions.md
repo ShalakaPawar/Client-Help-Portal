@@ -1,5 +1,7 @@
 # Design decisions
 
+One-page summary. The full design, with options, trade-offs, diagrams and flows, is in [DESIGN.md](DESIGN.md).
+
 Each decision: **choice**, **why**, **trade-off accepted**.
 
 ## Product rules
@@ -16,7 +18,7 @@ Each decision: **choice**, **why**, **trade-off accepted**.
 |---|---|---|---|
 | 1 | npm workspaces (`apps/api`, `apps/web`, `packages/shared`) | One install; shared enums/types/events stop frontend–backend drift | No build caching (not needed) |
 | 2 | Vue 3 + Vite + Pinia + Tailwind | Required stack; simple consistent UI without a component library | A few hand-made components |
-| 3 | One NestJS process (API + BullMQ processors) | Simplest to run and explain | Processing shares CPU with the API (ffmpeg only stream-copies) |
+| 3 | Two processes from one NestJS codebase: **API** (`main.ts`) and **worker** (`worker.ts`, processing only) | Slow, failing or crashing processing can never block requests or calls; measured: API latency unchanged with the worker busy or killed | Worker notifications go through Redis (Socket.IO adapter/emitter); one more process in `npm run dev` |
 | 4 | PostgreSQL + Prisma | Concurrent writers, partial unique indexes, readable schema + migrations | Docker required; partial indexes are hand-written SQL in the migration |
 | 5 | JWT in **sessionStorage** | Two windows can be two users; survives refresh (rejoin) | Readable by JS (XSS risk) → Vue escaping, no `v-html`, Content-Security-Policy; no refresh tokens (8 h) |
 | 6 | Scoped queries in `ScopeService`, **404** for others' data | The filter is part of every query, so it can't be forgotten; 404 doesn't reveal existence | 404 can hide bugs while debugging (logs keep request ids) |

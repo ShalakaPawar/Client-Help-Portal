@@ -1,7 +1,9 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Call, Prisma, RecordingEgress } from '@prisma/client';
 import { randomUUID } from 'node:crypto';
-import { RecordingStatus, Role, SocketEvent } from '@chp/shared';
+import { ErrorCode, RecordingStatus, Role, SocketEvent } from '@chp/shared';
+import { HttpStatus } from '@nestjs/common';
+import { AppException } from '../common/app-exception';
 import { PrismaService } from '../prisma/prisma.service';
 import { LiveKitService } from '../livekit/livekit.service';
 import { EgressSnapshot, isEgressFinished } from '../livekit/livekit.types';
@@ -54,8 +56,13 @@ export class RecordingsService {
         },
       });
     } catch (err) {
-      await this.setStatus(recording.id, call, RecordingStatus.FAILED, `Could not start recording: ${(err as Error).message}`);
-      throw err;
+      // LiveKit reachable but the recorder refused/timed out => every recorder is busy (Egress CPU budget).
+      const busy = await this.livekit.ping();
+      const message = busy
+        ? 'No recorder is free right now (all recorders are busy). The call continues without recording.'
+        : `Could not start recording: ${(err as Error).message}`;
+      await this.setStatus(recording.id, call, RecordingStatus.FAILED, message);
+      throw busy ? new AppException(ErrorCode.RECORDER_UNAVAILABLE, HttpStatus.SERVICE_UNAVAILABLE, message) : err;
     }
 
     // Record every microphone that is already published; later ones arrive via track_published.

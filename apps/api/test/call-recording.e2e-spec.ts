@@ -249,6 +249,18 @@ describe('Calls and recording', () => {
     expect(queue.enqueueProcessing).toHaveBeenCalledTimes(1);
   });
 
+  it('all recorders busy: consent gets a clear RECORDER_UNAVAILABLE and the call continues unrecorded', async () => {
+    const callId = await activeCall();
+    const { AppException } = await import('../src/common/app-exception');
+    livekit.startCompositeEgress.mockRejectedValueOnce(AppException.mediaUnavailable(new Error('The operation was aborted due to timeout')));
+    const res = await http().post(`/api/calls/${callId}/consent`).set(auth(t.client1)).send({ granted: true }).expect(503);
+    expect(res.body.code).toBe('RECORDER_UNAVAILABLE');
+    const rec = await prisma.recording.findFirstOrThrow();
+    expect(rec.status).toBe('FAILED');
+    expect(rec.lastError).toMatch(/recorders are busy/);
+    expect((await prisma.call.findUniqueOrThrow({ where: { id: callId } })).status).toBe('ACTIVE');
+  });
+
   it('LiveKit being down gives a clear 503 and saves nothing', async () => {
     const requestId = await newRequest(t.client1);
     // LiveKitService maps network failures to this exception (see LiveKitService.call).
